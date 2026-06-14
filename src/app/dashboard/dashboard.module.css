@@ -1,0 +1,299 @@
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.statsGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.5rem;
+}
+
+.statCard {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.statIcon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.statIcon.pending {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: var(--status-pending);
+}
+
+.statIcon.success {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--status-success);
+}
+
+.statIcon.error {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--status-error);
+}
+
+.statInfo h3 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+}
+
+.statInfo p {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Table Section */
+.tableSection {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.tableToolbar {
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+}
+
+.searchBox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 1rem;
+    width: 300px;
+}
+
+.searchBox input {
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    outline: none;
+    width: 100%;
+}
+
+.filterGroup {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.filterBtn {
+    padding: 0.5rem 1rem;
+    background-color: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.filterBtn:hover,
+.filterBtn.active {
+    background-color: var(--surface-hover);
+    color: var(--text-primary);
+    border-color: var(--primary);
+}
+
+.tableWrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.table th {
+    padding: 1rem 1.5rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+}
+
+.table td {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.table tr:last-child td {
+    border-bottom: none;
+}
+
+.table tr:hover td {
+    background-color: rgba(255, 255, 255, 0.02);
+}
+
+.statusBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.statusBadge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.statusBadge.pending {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: var(--status-pending);
+}
+
+.statusBadge.pending::before {
+    background-color: var(--status-pending);
+}
+
+.statusBadge.success {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--status-success);
+}
+
+.statusBadge.success::before {
+    background-color: var(--status-success);
+}
+
+.statusBadge.error {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--status-error);
+}
+
+.statusBadge.error::before {
+    background-color: var(--status-error);
+}
+
+.actionsCell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.actionBtn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    transition: all 0.2s;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.actionBtn:hover {
+    background-color: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.deleteBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    background-color: transparent;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.deleteBtn:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: var(--status-error);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.traceBtn, .commentBtn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 0.5rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.traceBtn:hover {
+    background-color: rgba(59, 130, 246, 0.1);
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.commentBtn:hover {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: var(--status-success);
+    border-color: var(--status-success);
+}
+
+.badgeCount {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background-color: var(--primary);
+    color: white;
+    font-size: 0.65rem;
+    padding: 2px 5px;
+    border-radius: 9999px;
+    font-weight: 700;
+    min-width: 16px;
+    text-align: center;
+}
