@@ -1,0 +1,126 @@
+-- Tabla de usuarios
+CREATE TABLE IF NOT EXISTS users (
+id SERIAL PRIMARY KEY,
+first_name VARCHAR(30) NOT NULL,
+second_name VARCHAR(30),
+last_name VARCHAR(30),
+second_last_name VARCHAR(30),
+creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+date_birthday DATE,
+status CHAR(1) NOT NULL CHECK (status IN ('A', 'I')) -- A: Activo, I: Inactivo
+);
+
+CREATE TABLE IF NOT EXISTS roles (
+id SERIAL PRIMARY KEY,
+name VARCHAR(50) UNIQUE NOT NULL,
+description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+id SERIAL PRIMARY KEY,
+name VARCHAR(50) UNIQUE NOT NULL,
+description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+role_id INTEGER NOT NULL,
+permission_id INTEGER NOT NULL,
+
+PRIMARY KEY (role_id, permission_id),
+
+FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+
+);
+
+CREATE TABLE IF NOT EXISTS user_roles (
+user_id INTEGER NOT NULL,
+role_id INTEGER NOT NULL,
+
+
+PRIMARY KEY (user_id, role_id),
+
+FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+
+);
+
+-- Tabla de documentos
+CREATE TABLE IF NOT EXISTS documents (
+id SERIAL PRIMARY KEY,
+user_id INTEGER NOT NULL,
+name VARCHAR(100) NOT NULL,
+creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+encargado_cierre INTEGER,
+file_link TEXT,
+-- cerrado para el equipo de balanza
+-- hechi para el área comercial -> ya no se podrá modificar más
+-- error
+status VARCHAR(15) NOT NULL CHECK (status IN ('PENDIENTE', 'CERRADO','HECHO','ERROR')),
+
+CONSTRAINT fk_documents_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE CASCADE
+,
+CONSTRAINT fk_encargado_cierre
+    FOREIGN KEY (encargado_cierre)
+    REFERENCES users(id)
+    ON DELETE CASCADE
+
+
+);
+
+-- Tabla de comentarios
+CREATE TABLE IF NOT EXISTS comments (
+id SERIAL PRIMARY KEY,
+document_id INTEGER NOT NULL,
+user_id INTEGER,
+comment TEXT NOT NULL,
+creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+CONSTRAINT fk_comments_document
+    FOREIGN KEY (document_id)
+    REFERENCES documents(id)
+    ON DELETE CASCADE,
+
+CONSTRAINT fk_comments_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE SET NULL
+
+);
+
+-- Tabla de auditoría de documentos
+CREATE TABLE IF NOT EXISTS audit_documents (
+id SERIAL PRIMARY KEY,
+document_id INTEGER NOT NULL,
+user_id INTEGER,
+action VARCHAR(50), -- Ej: CREATE, UPDATE, DELETE, CLOSE
+modification_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+
+CONSTRAINT fk_audit_document
+    FOREIGN KEY (document_id)
+    REFERENCES documents(id)
+    ON DELETE CASCADE,
+
+CONSTRAINT fk_audit_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE SET NULL
+
+);
+
+INSERT INTO permissions (name, description) VALUES
+('CREATE_DOCUMENT', 'Crear documentos'),
+('VIEW_DOCUMENT', 'Ver documentos'),
+('EDIT_DOCUMENT', 'Editar documentos'),
+('DELETE_DOCUMENT', 'Eliminar documentos'),
+('COMMENT_DOCUMENT', 'Comentar documentos'),
+('CLOSE_DOCUMENT', 'Cerrar documentos');
+
+INSERT INTO roles (name, description) VALUES
+('ADMIN', 'Acceso total'),
+('EDITOR', 'Puede crear y editar'),
+('VIEWER', 'Solo lectura');

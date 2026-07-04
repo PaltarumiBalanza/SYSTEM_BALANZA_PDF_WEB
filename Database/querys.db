@@ -1,0 +1,51 @@
+Ver permisos de un usuario:
+
+SELECT DISTINCT p.name
+FROM users u
+JOIN user_roles ur ON ur.user_id = u.id
+JOIN roles r ON r.id = ur.role_id
+JOIN role_permissions rp ON rp.role_id = r.id
+JOIN permissions p ON p.id = rp.permission_id
+WHERE u.id = 1;
+
+Verificar si un usuario tiene un permiso:
+
+SELECT EXISTS (
+SELECT 1
+FROM user_roles ur
+JOIN role_permissions rp ON rp.role_id = ur.role_id
+JOIN permissions p ON p.id = rp.permission_id
+WHERE ur.user_id = 1
+AND p.name = 'EDIT_DOCUMENT'
+);
+
+Asignar permisos roles
+
+admin todo
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r, permissions p
+WHERE r.name = 'ADMIN';
+
+editor
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r, permissions p
+WHERE r.name = 'ADMIN';
+
+viewr
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+JOIN permissions p ON p.name IN (
+'VIEW_DOCUMENT'
+)
+WHERE r.name = 'VIEWER';
+
+asignar role a un usuario
+
+INSERT INTO user_roles (user_id, role_id)
+SELECT 1, id FROM roles WHERE name = 'ADMIN';
