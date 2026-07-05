@@ -142,3 +142,13 @@
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.4);
 }
+
+.errorAlert {
+    background-color: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #f87171;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    text-align: center;
+}

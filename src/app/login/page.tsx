@@ -1,15 +1,39 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import styles from './login.module.css';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
     const router = useRouter();
+    const [email, setEmail] = useState('elias.carmin@paltarumi.com');
+    const [password, setPassword] = useState('paltarumi123');
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        router.push('/dashboard');
+        setErrorMsg(null);
+        setLoading(true);
+
+        try {
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
+
+            if (error) {
+                setErrorMsg(error.message);
+            } else {
+                router.push('/dashboard');
+            }
+        } catch (err: any) {
+            setErrorMsg(err.message || 'Ocurrió un error inesperado');
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -29,13 +53,20 @@ export default function LoginPage() {
                     <p>Autenticación de Inteligencia Paltarumi</p>
                 </div>
 
+                {errorMsg && (
+                    <div className={styles.errorAlert}>
+                        {errorMsg}
+                    </div>
+                )}
+
                 <div className={styles.formGroup}>
-                    <label className={styles.label}>Cuenta de Usuario</label>
+                    <label className={styles.label}>Correo Electrónico</label>
                     <input 
-                        type="text" 
+                        type="email" 
                         className={styles.input} 
-                        placeholder="Elias Carmin" 
-                        defaultValue="Elias Carmin"
+                        placeholder="elias.carmin@paltarumi.com" 
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         required 
                     />
                 </div>
@@ -46,12 +77,19 @@ export default function LoginPage() {
                         type="password" 
                         className={styles.input} 
                         placeholder="••••••••" 
-                        defaultValue="paltarumi123"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
                         required 
                     />
                 </div>
 
-                <button type="submit" className={styles.button}>Acceder al Sistema</button>
+                <button 
+                    type="submit" 
+                    className={styles.button}
+                    disabled={loading}
+                >
+                    {loading ? 'Accediendo...' : 'Acceder al Sistema'}
+                </button>
                 
                 <div className={styles.footer}>
                     &copy; 2026 Paltarumi SAC. Todos los derechos reservados.

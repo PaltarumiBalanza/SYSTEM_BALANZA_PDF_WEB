@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     Search, UserPlus, UserX, Trash2, History, Shield, 
     CheckCircle, Save, Unlock, X, User, Mail, Lock, ChevronDown
@@ -9,14 +9,7 @@ import styles from '../dashboard.module.css';
 import userStyles from './users.module.css';
 import { Tabs } from '@/components/ui/Tabs';
 import { Modal, ConfirmModal, TraceabilityContent } from '@/components/ui/Modal';
-
-const MOCK_USERS = [
-    { id: 1, name: 'Elias Carmin', role: 'Administrador', email: 'elias@paltarumi.com', status: 'active', lastLogin: '2026-03-31 10:00 AM' },
-    { id: 2, name: 'Juan Pérez', role: 'Operador', email: 'juan.perez@paltarumi.com', status: 'active', lastLogin: '2026-03-30 04:30 PM' },
-    { id: 3, name: 'Carlos Ruíz', role: 'Supervisor', email: 'carlos.ruiz@paltarumi.com', status: 'active', lastLogin: '2026-03-31 09:12 AM' },
-    { id: 4, name: 'Ana Torres', role: 'Supervisor', email: 'ana.torres@paltarumi.com', status: 'inactive', lastLogin: '2026-03-15 11:20 AM' },
-    { id: 5, name: 'Luis Gómez', role: 'Operador', email: 'luis.gomez@paltarumi.com', status: 'inactive', lastLogin: '2026-03-20 08:00 AM' },
-];
+import { supabase } from '@/lib/supabaseClient';
 
 const MOCK_ROLES = [
     { id: 'admin', name: 'Administrador', users: 1, permissions: ['global_access', 'manage_users', 'audit_view', 'edit_all', 'delete_all'] },
@@ -27,40 +20,142 @@ const MOCK_ROLES = [
 const ROLES_LIST = ['Administrador', 'Supervisor', 'Operador'];
 
 export default function UsersPage() {
-    const [users, setUsers] = useState(MOCK_USERS);
+    const [users, setUsers] = useState<any[]>([]);
     const [roles] = useState(MOCK_ROLES);
+    const [loading, setLoading] = useState(true);
     const [confirmAction, setConfirmAction] = useState<{ id: number, type: 'delete' | 'deactivate' | 'activate' } | null>(null);
     const [showUserTrace, setShowUserTrace] = useState<number | null>(null);
     const [showNewUserModal, setShowNewUserModal] = useState(false);
     const [newUser, setNewUser] = useState({ name: '', email: '', role: 'Operador', password: '' });
 
-    const activeUsers = users.filter(u => u.status === 'active');
-    const inactiveUsers = users.filter(u => u.status === 'inactive');
+    const fetchUsers = async () => {
+        setLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('users')
+                .select(`
+                    id,
+                    first_name,
+                    second_name,
+                    last_name,
+                    second_last_name,
+                    status,
+                    creation_date,
+                    user_roles (
+                        role_id,
+                        roles (name)
+                    )
+                `);
 
-    const handleConfirm = () => {
-        if (!confirmAction) return;
-        if (confirmAction.type === 'delete') {
-            setUsers(prev => prev.filter(u => u.id !== confirmAction.id));
-        } else if (confirmAction.type === 'deactivate') {
-            setUsers(prev => prev.map(u => u.id === confirmAction.id ? { ...u, status: 'inactive' } : u));
-        } else if (confirmAction.type === 'activate') {
-            setUsers(prev => prev.map(u => u.id === confirmAction.id ? { ...u, status: 'active' } : u));
+            if (error) throw error;
+
+            const mapped = (data || []).map((u: any) => {
+                const roleName = u.user_roles?.[0]?.roles?.name || 'VIEWER';
+                const nombreCompleto = [u.first_name, u.second_name, u.last_name, u.second_last_name]
+                    .filter(Boolean)
+                    .join(' ');
+
+                return {
+                    id: u.id,
+                    name: nombreCompleto || 'Usuario sin nombre',
+                    email: u.email || `${u.first_name.toLowerCase().replace(/\s+/g, '')}@paltarumi.com`,
+                    role: roleName === 'ADMIN' ? 'Administrador' : roleName === 'EDITOR' ? 'Supervisor' : 'Operador',
+                    status: u.status === 'A' ? 'active' : 'inactive',
+                    lastLogin: 'Nunca'
+                };
+            });
+
+            setUsers(mapped);
+        } catch (err) {
+            console.error('Error al obtener usuarios:', err);
+        } finally {
+            setLoading(false);
         }
     };
 
-    const handleCreateUser = () => {
+    useEffect(() => {
+        fetchUsers();
+    }, []);
+
+    const activeUsers = users.filter(u => u.status === 'active');
+    const inactiveUsers = users.filter(u => u.status === 'inactive');
+
+    const handleConfirm = async () => {
+        if (!confirmAction) return;
+
+        try {
+            if (confirmAction.type === 'delete') {
+                const { error } = await supabase
+                    .from('users')
+                    .delete()
+                    .eq('id', confirmAction.id);
+                if (error) throw error;
+                setUsers(prev => prev.filter(u => u.id !== confirmAction.id));
+            } else if (confirmAction.type === 'deactivate') {
+                const { error } = await supabase
+                    .from('users')
+                    .update({ status: 'I' })
+                    .eq('id', confirmAction.id);
+                if (error) throw error;
+                setUsers(prev => prev.map(u => u.id === confirmAction.id ? { ...u, status: 'inactive' } : u));
+            } else if (confirmAction.type === 'activate') {
+                const { error } = await supabase
+                    .from('users')
+                    .update({ status: 'A' })
+                    .eq('id', confirmAction.id);
+                if (error) throw error;
+                setUsers(prev => prev.map(u => u.id === confirmAction.id ? { ...u, status: 'active' } : u));
+            }
+        } catch (err: any) {
+            alert('Error al actualizar usuario: ' + err.message);
+        } finally {
+            setConfirmAction(null);
+        }
+    };
+
+    const handleCreateUser = async () => {
         if (!newUser.name || !newUser.email) return;
-        const nextId = Math.max(...users.map(u => u.id)) + 1;
-        setUsers(prev => [...prev, {
-            id: nextId,
-            name: newUser.name,
-            email: newUser.email,
-            role: newUser.role,
-            status: 'active',
-            lastLogin: 'Nunca',
-        }]);
-        setNewUser({ name: '', email: '', role: 'Operador', password: '' });
-        setShowNewUserModal(false);
+
+        const parts = newUser.name.trim().split(' ');
+        const firstName = parts[0];
+        const lastName = parts.slice(1).join(' ') || '';
+
+        try {
+            const { data: insertedUser, error: userError } = await supabase
+                .from('users')
+                .insert({
+                    first_name: firstName,
+                    last_name: lastName,
+                    status: 'A'
+                })
+                .select()
+                .single();
+
+            if (userError) throw userError;
+
+            const dbRoleName = newUser.role === 'Administrador' ? 'ADMIN' : newUser.role === 'Supervisor' ? 'EDITOR' : 'VIEWER';
+            
+            const { data: roleData, error: roleError } = await supabase
+                .from('roles')
+                .select('id')
+                .eq('name', dbRoleName)
+                .single();
+
+            if (!roleError && roleData) {
+                await supabase
+                    .from('user_roles')
+                    .insert({
+                        user_id: insertedUser.id,
+                        role_id: roleData.id
+                    });
+            }
+
+            fetchUsers();
+            setNewUser({ name: '', email: '', role: 'Operador', password: '' });
+            setShowNewUserModal(false);
+        } catch (err: any) {
+            alert('Error al crear usuario: ' + err.message);
+        }
     };
 
     const UserManagementView = () => (
@@ -74,42 +169,52 @@ export default function UsersPage() {
                     </div>
                 </div>
                 <div className={styles.tableWrapper}>
-                    <table className={styles.table}>
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Email</th>
-                                <th>Rol</th>
-                                <th>Último Acceso</th>
-                                <th style={{ textAlign: 'right' }}>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {activeUsers.map(user => (
-                                <tr key={user.id}>
-                                    <td style={{ fontWeight: 500 }}>{user.name}</td>
-                                    <td>{user.email}</td>
-                                    <td>
-                                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontWeight: 600 }}>
-                                            {user.role}
-                                        </span>
-                                    </td>
-                                    <td>{user.lastLogin}</td>
-                                    <td className={styles.actionsCell}>
-                                        <button className={styles.actionBtn} title="Ver Trazabilidad" onClick={() => setShowUserTrace(user.id)}>
-                                            <History size={16} />
-                                        </button>
-                                        <button className={styles.actionBtn} title="Desactivar Usuario" onClick={() => setConfirmAction({ id: user.id, type: 'deactivate' })}>
-                                            <UserX size={16} color="#f59e0b" />
-                                        </button>
-                                        <button className={styles.deleteBtn} title="Eliminar Permanentemente" onClick={() => setConfirmAction({ id: user.id, type: 'delete' })}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </td>
+                    {loading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            Cargando usuarios activos...
+                        </div>
+                    ) : activeUsers.length === 0 ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            No hay usuarios activos registrados.
+                        </div>
+                    ) : (
+                        <table className={styles.table}>
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Último Acceso</th>
+                                    <th style={{ textAlign: 'right' }}>Acciones</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {activeUsers.map(user => (
+                                    <tr key={user.id}>
+                                        <td style={{ fontWeight: 500 }}>{user.name}</td>
+                                        <td>{user.email}</td>
+                                        <td>
+                                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontWeight: 600 }}>
+                                                {user.role}
+                                            </span>
+                                        </td>
+                                        <td>{user.lastLogin}</td>
+                                        <td className={styles.actionsCell}>
+                                            <button className={styles.actionBtn} title="Ver Trazabilidad" onClick={() => setShowUserTrace(user.id)}>
+                                                <History size={16} />
+                                            </button>
+                                            <button className={styles.actionBtn} title="Desactivar Usuario" onClick={() => setConfirmAction({ id: user.id, type: 'deactivate' })}>
+                                                <UserX size={16} color="#f59e0b" />
+                                            </button>
+                                            <button className={styles.deleteBtn} title="Eliminar Permanentemente" onClick={() => setConfirmAction({ id: user.id, type: 'delete' })}>
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
 
@@ -122,39 +227,49 @@ export default function UsersPage() {
                     </div>
                 </div>
                 <div className={styles.tableWrapper}>
-                    <table className={styles.table}>
-                        <thead>
-                            <tr>
-                                <th>Nombre</th>
-                                <th>Email</th>
-                                <th>Rol</th>
-                                <th>Estado</th>
-                                <th style={{ textAlign: 'right' }}>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {inactiveUsers.map(user => (
-                                <tr key={user.id}>
-                                    <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{user.name}</td>
-                                    <td style={{ color: 'var(--text-secondary)' }}>{user.email}</td>
-                                    <td style={{ color: 'var(--text-secondary)' }}>{user.role}</td>
-                                    <td>
-                                        <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontWeight: 600 }}>
-                                            Sin Acceso
-                                        </span>
-                                    </td>
-                                    <td className={styles.actionsCell}>
-                                        <button className={styles.actionBtn} title="Reactivar Usuario" onClick={() => setConfirmAction({ id: user.id, type: 'activate' })}>
-                                            <CheckCircle size={16} color="var(--status-success)" />
-                                        </button>
-                                        <button className={styles.deleteBtn} title="Eliminar Permanentemente" onClick={() => setConfirmAction({ id: user.id, type: 'delete' })}>
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </td>
+                    {loading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            Cargando usuarios desactivados...
+                        </div>
+                    ) : inactiveUsers.length === 0 ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                            No hay usuarios desactivados.
+                        </div>
+                    ) : (
+                        <table className={styles.table}>
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Email</th>
+                                    <th>Rol</th>
+                                    <th>Estado</th>
+                                    <th style={{ textAlign: 'right' }}>Acciones</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {inactiveUsers.map(user => (
+                                    <tr key={user.id}>
+                                        <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{user.name}</td>
+                                        <td style={{ color: 'var(--text-secondary)' }}>{user.email}</td>
+                                        <td style={{ color: 'var(--text-secondary)' }}>{user.role}</td>
+                                        <td>
+                                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontWeight: 600 }}>
+                                                Sin Acceso
+                                            </span>
+                                        </td>
+                                        <td className={styles.actionsCell}>
+                                            <button className={styles.actionBtn} title="Reactivar Usuario" onClick={() => setConfirmAction({ id: user.id, type: 'activate' })}>
+                                                <CheckCircle size={16} color="var(--status-success)" />
+                                            </button>
+                                            <button className={styles.deleteBtn} title="Eliminar Permanentemente" onClick={() => setConfirmAction({ id: user.id, type: 'delete' })}>
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
         </div>

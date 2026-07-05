@@ -11,7 +11,8 @@ Familiarízate con la distribución del código antes de proponer cambios:
 *   [`/src/app`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/app): Rutas de Next.js (App Router). Contiene el flujo de pantallas (`login`, `dashboard`, `editor/[id]`).
 *   [`/src/components/ui`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/components/ui): Componentes UI compartidos (`Modal.tsx`, `PdfPageCanvas.tsx`).
 *   [`/Database`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Database): Esquemas de base de datos PostgreSQL/Supabase ([`Esquema.db`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Database/Esquema.db)) e historial de consultas de referencia.
-*   [`/Functions`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Functions): Funciones Serverless de Supabase (Deno/Edge Functions) para la lógica de API del backend.
+*   [`/supabase/functions`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions): Funciones Serverless de Supabase (Deno/Edge Functions) estructuradas en subcarpetas según demanda del CLI.
+*   [`/Functions`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Functions): Archivos de respaldo iniciales.
 
 ---
 
@@ -77,13 +78,14 @@ Para sustituir el bypass de login actual en [`src/app/login/page.tsx`](file:///c
 
 ### Receta C: Despliegue de Edge Functions
 
-Para crear nuevas funciones serverless en `/Functions`:
+Para crear nuevas funciones serverless en `/supabase/functions`:
 
-1.  Crea la carpeta de la función (ej: `Functions/create-pdf`).
+1.  Crea la carpeta de la función (ej: `supabase/functions/create-pdf/index.ts`).
 2.  Asegúrate de incluir las cabeceras CORS (`Access-Control-Allow-Origin: '*'`) para permitir llamadas del cliente.
-3.  Prueba localmente usando Supabase CLI:
+3.  Prueba localmente o despliega usando Supabase CLI:
     ```bash
     supabase functions serve
+    supabase functions deploy create-pdf
     ```
 
 ### Receta D: Guardar los Cambios del Editor de PDF en Storage

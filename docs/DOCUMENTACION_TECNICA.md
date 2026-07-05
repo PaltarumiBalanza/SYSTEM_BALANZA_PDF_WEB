@@ -105,11 +105,13 @@ src/
 
 ---
 
-## 4. Lógica de Negocio en Functions (Supabase Edge Functions)
+## 4. Lógica de Negocio (Supabase Edge Functions)
 
-Las funciones del backend planificadas se desarrollan como Supabase Edge Functions escritas en TypeScript y ejecutadas en Deno.
-*   Ubicación actual: [Functions/](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Functions)
-*   **`users.ts`**: Ejemplo de servicio serverless que se conecta a la instancia de Supabase usando variables de entorno (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) y devuelve la lista de usuarios en formato JSON con cabeceras CORS habilitadas para permitir peticiones desde el frontend Next.js.
+Las funciones del backend se desarrollan como Supabase Edge Functions escritas en TypeScript y ejecutadas en Deno.
+*   **Estructura de Directorio**: Deben alojarse bajo la ruta estándar de la CLI: `supabase/functions/<nombre_de_funcion>/index.ts`.
+*   **Funciones Implementadas**:
+    *   [`supabase/functions/sync-desktop-report/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/sync-desktop-report/index.ts): Gestiona la sincronización automática de reportes preliminares subidos desde el software de escritorio, su registro en base de datos y alertas por email mediante Resend.
+    *   [`supabase/functions/compile-and-sign-pdf/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/compile-and-sign-pdf/index.ts): Recibe el flujo ordenado de páginas, las concatena y extrae con `pdf-lib`, estampa la firma y guarda el PDF final en `final-reports`.
 
 ---
 
