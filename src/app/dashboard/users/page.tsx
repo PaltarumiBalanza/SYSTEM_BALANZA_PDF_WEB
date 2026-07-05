@@ -39,6 +39,7 @@ export default function UsersPage() {
                     second_name,
                     last_name,
                     second_last_name,
+                    email,
                     status,
                     creation_date,
                     user_roles (
@@ -116,39 +117,18 @@ export default function UsersPage() {
     const handleCreateUser = async () => {
         if (!newUser.name || !newUser.email) return;
 
-        const parts = newUser.name.trim().split(' ');
-        const firstName = parts[0];
-        const lastName = parts.slice(1).join(' ') || '';
-
         try {
-            const { data: insertedUser, error: userError } = await supabase
-                .from('users')
-                .insert({
-                    first_name: firstName,
-                    last_name: lastName,
-                    status: 'A'
-                })
-                .select()
-                .single();
+            const { data, error } = await supabase.functions.invoke('create-user', {
+                body: {
+                    name: newUser.name,
+                    email: newUser.email,
+                    role: newUser.role,
+                    password: newUser.password || undefined
+                }
+            });
 
-            if (userError) throw userError;
-
-            const dbRoleName = newUser.role === 'Administrador' ? 'ADMIN' : newUser.role === 'Supervisor' ? 'EDITOR' : 'VIEWER';
-            
-            const { data: roleData, error: roleError } = await supabase
-                .from('roles')
-                .select('id')
-                .eq('name', dbRoleName)
-                .single();
-
-            if (!roleError && roleData) {
-                await supabase
-                    .from('user_roles')
-                    .insert({
-                        user_id: insertedUser.id,
-                        role_id: roleData.id
-                    });
-            }
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
 
             fetchUsers();
             setNewUser({ name: '', email: '', role: 'Operador', password: '' });

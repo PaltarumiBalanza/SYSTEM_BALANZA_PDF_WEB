@@ -18,10 +18,11 @@ El sistema está estructurado como una aplicación moderna de dos capas principa
 
 El esquema de base de datos relacional para Supabase se encuentra documentado en [Database/Esquema.db](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Database/Esquema.db). A continuación se describe la estructura de las tablas principales:
 
-### 2.1 Tabla: `users`
+### 2.1 Tabla: `users` (Perfiles Públicos)
 Almacena la información de los usuarios del sistema.
-*   `id` (SERIAL, PK): Identificador único.
+*   `id` (UUID, PK): Identificador único que referencia directamente a `auth.users.id` (Supabase Auth).
 *   `first_name`, `second_name`, `last_name`, `second_last_name` (VARCHAR): Nombre completo del usuario.
+*   `email` (VARCHAR): Dirección de correo electrónico del usuario (sincronizada desde la cuenta de autenticación).
 *   `creation_date` (TIMESTAMP): Fecha de registro.
 *   `date_birthday` (DATE): Fecha de nacimiento.
 *   `status` (CHAR(1)): Estado del usuario (`A` para Activo, `I` para Inactivo).

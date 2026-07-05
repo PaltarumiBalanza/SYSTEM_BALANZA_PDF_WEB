@@ -1,126 +1,169 @@
--- Tabla de usuarios
-CREATE TABLE IF NOT EXISTS users (
-id SERIAL PRIMARY KEY,
-first_name VARCHAR(30) NOT NULL,
-second_name VARCHAR(30),
-last_name VARCHAR(30),
-second_last_name VARCHAR(30),
-creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-date_birthday DATE,
-status CHAR(1) NOT NULL CHECK (status IN ('A', 'I')) -- A: Activo, I: Inactivo
+-- ====================================================================
+-- ESQUEMA COMPLETO Y RE-CREACIÓN DE BASE DE DATOS (SUPABASE)
+-- ====================================================================
+-- Ejecuta este script completo en el editor SQL de tu Dashboard de Supabase.
+-- Limpiará cualquier tabla previa y creará la estructura limpia en UUID.
+
+-- 1. LIMPIEZA DE TABLAS Y ESTRUCTURAS PREVIAS
+-- ==========================================
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user CASCADE;
+DROP TABLE IF EXISTS public.audit_documents CASCADE;
+DROP TABLE IF EXISTS public.comments CASCADE;
+DROP TABLE IF EXISTS public.documents CASCADE;
+DROP TABLE IF EXISTS public.user_roles CASCADE;
+DROP TABLE IF EXISTS public.role_permissions CASCADE;
+DROP TABLE IF EXISTS public.permissions CASCADE;
+DROP TABLE IF EXISTS public.roles CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+
+-- Habilitar extensión de UUID (por seguridad)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+
+-- 2. CREACIÓN DE TABLAS CON LLAVES UUID
+-- ==========================================
+
+-- Tabla de usuarios (Perfiles públicos enlazados a auth.users de Supabase)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    first_name VARCHAR(30) NOT NULL,
+    second_name VARCHAR(30),
+    last_name VARCHAR(30),
+    second_last_name VARCHAR(30),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    date_birthday DATE,
+    status CHAR(1) NOT NULL CHECK (status IN ('A', 'I')) DEFAULT 'A' -- A: Activo, I: Inactivo
 );
 
-CREATE TABLE IF NOT EXISTS roles (
-id SERIAL PRIMARY KEY,
-name VARCHAR(50) UNIQUE NOT NULL,
-description TEXT
+-- Tabla de roles
+CREATE TABLE IF NOT EXISTS public.roles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT
 );
 
-CREATE TABLE IF NOT EXISTS permissions (
-id SERIAL PRIMARY KEY,
-name VARCHAR(50) UNIQUE NOT NULL,
-description TEXT
+-- Tabla de permisos
+CREATE TABLE IF NOT EXISTS public.permissions (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT
 );
 
-CREATE TABLE IF NOT EXISTS role_permissions (
-role_id INTEGER NOT NULL,
-permission_id INTEGER NOT NULL,
-
-PRIMARY KEY (role_id, permission_id),
-
-FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
-FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
-
+-- Tabla intermedia: Permisos asignados a cada Rol (N:M)
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+    role_id INTEGER NOT NULL,
+    permission_id INTEGER NOT NULL,
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS user_roles (
-user_id INTEGER NOT NULL,
-role_id INTEGER NOT NULL,
-
-
-PRIMARY KEY (user_id, role_id),
-
-FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-
+-- Tabla intermedia: Roles asignados a cada Usuario (N:M)
+CREATE TABLE IF NOT EXISTS public.user_roles (
+    user_id UUID NOT NULL,
+    role_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
 );
 
--- Tabla de documentos
-CREATE TABLE IF NOT EXISTS documents (
-id SERIAL PRIMARY KEY,
-user_id INTEGER NOT NULL,
-name VARCHAR(100) NOT NULL,
-creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-encargado_cierre INTEGER,
-file_link TEXT,
--- cerrado para el equipo de balanza
--- hechi para el área comercial -> ya no se podrá modificar más
--- error
-status VARCHAR(15) NOT NULL CHECK (status IN ('PENDIENTE', 'CERRADO','HECHO','ERROR')),
-
-CONSTRAINT fk_documents_user
-    FOREIGN KEY (user_id)
-    REFERENCES users(id)
-    ON DELETE CASCADE
-,
-CONSTRAINT fk_encargado_cierre
-    FOREIGN KEY (encargado_cierre)
-    REFERENCES users(id)
-    ON DELETE CASCADE
-
-
+-- Tabla de documentos (Reportes de balanzas)
+CREATE TABLE IF NOT EXISTS public.documents (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    encargado_cierre UUID,
+    file_link TEXT,
+    -- PENDIENTE: En edición
+    -- CERRADO: Finalizado por balanza
+    -- HECHO: Validado comercialmente (Firmado)
+    -- ERROR: Falla de consistencia
+    status VARCHAR(15) NOT NULL CHECK (status IN ('PENDIENTE', 'CERRADO', 'HECHO', 'ERROR')) DEFAULT 'PENDIENTE',
+    CONSTRAINT fk_documents_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_encargado_cierre FOREIGN KEY (encargado_cierre) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Tabla de comentarios
-CREATE TABLE IF NOT EXISTS comments (
-id SERIAL PRIMARY KEY,
-document_id INTEGER NOT NULL,
-user_id INTEGER,
-comment TEXT NOT NULL,
-creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-CONSTRAINT fk_comments_document
-    FOREIGN KEY (document_id)
-    REFERENCES documents(id)
-    ON DELETE CASCADE,
-
-CONSTRAINT fk_comments_user
-    FOREIGN KEY (user_id)
-    REFERENCES users(id)
-    ON DELETE SET NULL
-
+-- Tabla de comentarios de retroalimentación
+CREATE TABLE IF NOT EXISTS public.comments (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL,
+    user_id UUID,
+    comment TEXT NOT NULL,
+    creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_comments_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    CONSTRAINT fk_comments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Tabla de auditoría de documentos
-CREATE TABLE IF NOT EXISTS audit_documents (
-id SERIAL PRIMARY KEY,
-document_id INTEGER NOT NULL,
-user_id INTEGER,
-action VARCHAR(50), -- Ej: CREATE, UPDATE, DELETE, CLOSE
-modification_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-
-CONSTRAINT fk_audit_document
-    FOREIGN KEY (document_id)
-    REFERENCES documents(id)
-    ON DELETE CASCADE,
-
-CONSTRAINT fk_audit_user
-    FOREIGN KEY (user_id)
-    REFERENCES users(id)
-    ON DELETE SET NULL
-
+-- Tabla de auditoría (Trazabilidad e historial del ciclo de vida del reporte)
+CREATE TABLE IF NOT EXISTS public.audit_documents (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL,
+    user_id UUID,
+    action VARCHAR(50), -- Ej: CREATE, UPDATE, DELETE, CLOSE
+    modification_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_audit_document FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    CONSTRAINT fk_audit_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
-INSERT INTO permissions (name, description) VALUES
+
+-- 3. SEMILLADO DE PERMISOS Y ROLES DE REFERENCIA
+-- ==========================================
+
+INSERT INTO public.permissions (name, description) VALUES
 ('CREATE_DOCUMENT', 'Crear documentos'),
 ('VIEW_DOCUMENT', 'Ver documentos'),
 ('EDIT_DOCUMENT', 'Editar documentos'),
 ('DELETE_DOCUMENT', 'Eliminar documentos'),
 ('COMMENT_DOCUMENT', 'Comentar documentos'),
-('CLOSE_DOCUMENT', 'Cerrar documentos');
+('CLOSE_DOCUMENT', 'Cerrar documentos')
+ON CONFLICT (name) DO NOTHING;
 
-INSERT INTO roles (name, description) VALUES
+INSERT INTO public.roles (name, description) VALUES
 ('ADMIN', 'Acceso total'),
 ('EDITOR', 'Puede crear y editar'),
-('VIEWER', 'Solo lectura');
+('VIEWER', 'Solo lectura')
+ON CONFLICT (name) DO NOTHING;
+
+
+-- 4. DISPARADOR (TRIGGER) DE SINCRONIZACIÓN DE PERFILES
+-- ==========================================
+-- Sincroniza automáticamente la cuenta de autenticación de Supabase (auth.users)
+-- con tu tabla pública de usuarios (public.users) asignando el rol VIEWER.
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  default_role_id INTEGER;
+BEGIN
+  -- 1. Insertar perfil del usuario
+  INSERT INTO public.users (id, first_name, last_name, email, status)
+  VALUES (
+    new.id,
+    COALESCE(new.raw_user_meta_data->>'first_name', split_part(new.email, '@', 1)),
+    COALESCE(new.raw_user_meta_data->>'last_name', ''),
+    new.email,
+    'A' -- Activo por defecto
+  );
+  
+  -- 2. Buscar ID del rol por defecto (VIEWER)
+  SELECT id INTO default_role_id FROM public.roles WHERE name = 'VIEWER';
+  
+  -- 3. Asignar rol al usuario
+  IF default_role_id IS NOT NULL THEN
+    INSERT INTO public.user_roles (user_id, role_id)
+    VALUES (new.id, default_role_id)
+    ON CONFLICT DO NOTHING;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Enlazar disparador a auth.users
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
