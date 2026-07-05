@@ -268,3 +268,29 @@
     from { transform: scale(0.92) translateY(16px); opacity: 0; }
     to { transform: scale(1) translateY(0); opacity: 1; }
 }
+
+.inlineRoleSelect {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s;
+    appearance: none; /* Quita estilo nativo en móvil/algunos navegadores */
+    text-align: center;
+}
+
+.inlineRoleSelect:hover {
+    border-color: var(--primary);
+    background: rgba(212, 160, 23, 0.06);
+    color: var(--primary);
+}
+
+.inlineRoleSelect option {
+    background-color: #1e293b;
+    color: #f8fafc;
+}

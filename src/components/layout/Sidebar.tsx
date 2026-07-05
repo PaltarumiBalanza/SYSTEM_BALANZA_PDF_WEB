@@ -6,13 +6,39 @@ import { usePathname } from 'next/navigation';
 import { FileText, Activity, LogOut, Settings, ClipboardCheck, Users } from 'lucide-react';
 import styles from './layout.module.css';
 
+import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+
 export function Sidebar({ isOpen }: { isOpen: boolean }) {
     const pathname = usePathname();
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    useEffect(() => {
+        const checkAdminRole = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const { data } = await supabase
+                        .from('user_roles')
+                        .select('roles(name)')
+                        .eq('user_id', user.id)
+                        .single() as any;
+                    
+                    if (data?.roles?.name === 'ADMIN') {
+                        setIsAdmin(true);
+                    }
+                }
+            } catch (err) {
+                console.error('Error checking admin role in sidebar:', err);
+            }
+        };
+        checkAdminRole();
+    }, []);
 
     const links = [
         { href: '/dashboard', label: 'Reportes', icon: FileText },
         { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck },
-        { href: '/dashboard/users', label: 'Usuarios', icon: Users },
+        ...(isAdmin ? [{ href: '/dashboard/users', label: 'Usuarios', icon: Users }] : []),
         { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
     ];
 

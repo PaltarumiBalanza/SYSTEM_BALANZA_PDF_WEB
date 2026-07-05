@@ -19,16 +19,47 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data: authData, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
             if (error) {
                 setErrorMsg(error.message);
-            } else {
-                router.push('/dashboard');
+                setLoading(false);
+                return;
             }
+
+            const authUser = authData.user;
+
+            // 1. Obtener el perfil público del usuario
+            const { data: userProfile, error: profileError } = await supabase
+                .from('users')
+                .select('status')
+                .eq('id', authUser.id)
+                .single();
+
+            if (profileError) {
+                console.warn("Perfil público de usuario no encontrado:", profileError.message);
+                router.push('/dashboard');
+                return;
+            }
+
+            // 2. Validar si está inactivo (Desactivado)
+            if (userProfile.status === 'I') {
+                setErrorMsg('Esta cuenta ha sido desactivada. Por favor, contacte al administrador.');
+                await supabase.auth.signOut();
+                setLoading(false);
+                return;
+            }
+
+            // 3. Registrar fecha de último acceso en public.users
+            await supabase
+                .from('users')
+                .update({ last_login: new Date().toISOString() })
+                .eq('id', authUser.id);
+
+            router.push('/dashboard');
         } catch (err: any) {
             setErrorMsg(err.message || 'Ocurrió un error inesperado');
         } finally {

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
     Search, UserPlus, UserX, Trash2, History, Shield, 
     CheckCircle, Save, Unlock, X, User, Mail, Lock, ChevronDown
@@ -20,9 +21,16 @@ const MOCK_ROLES = [
 const ROLES_LIST = ['Administrador', 'Supervisor', 'Operador'];
 
 export default function UsersPage() {
+    const router = useRouter();
     const [users, setUsers] = useState<any[]>([]);
-    const [roles] = useState(MOCK_ROLES);
+    const [dbRoles, setDbRoles] = useState<any[]>([]);
+    const [dbPermissions, setDbPermissions] = useState<any[]>([]);
+    const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+    const [activePermissions, setActivePermissions] = useState<number[]>([]);
+    const [savingPermissions, setSavingPermissions] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [checkingAuth, setCheckingAuth] = useState(true);
+    const [isAuthorized, setIsAuthorized] = useState(false);
     const [confirmAction, setConfirmAction] = useState<{ id: number, type: 'delete' | 'deactivate' | 'activate' } | null>(null);
     const [showUserTrace, setShowUserTrace] = useState<number | null>(null);
     const [showNewUserModal, setShowNewUserModal] = useState(false);
@@ -42,6 +50,7 @@ export default function UsersPage() {
                     email,
                     status,
                     creation_date,
+                    last_login,
                     user_roles (
                         role_id,
                         roles (name)
@@ -62,7 +71,7 @@ export default function UsersPage() {
                     email: u.email || `${u.first_name.toLowerCase().replace(/\s+/g, '')}@paltarumi.com`,
                     role: roleName === 'ADMIN' ? 'Administrador' : roleName === 'EDITOR' ? 'Supervisor' : 'Operador',
                     status: u.status === 'A' ? 'active' : 'inactive',
-                    lastLogin: 'Nunca'
+                    lastLogin: u.last_login ? new Date(u.last_login).toLocaleString('es-PE') : 'Nunca'
                 };
             });
 
@@ -74,8 +83,84 @@ export default function UsersPage() {
         }
     };
 
+    const fetchRolesAndPermissions = async () => {
+        try {
+            const { data: permData, error: permError } = await supabase
+                .from('permissions')
+                .select('*')
+                .order('id');
+            if (permError) throw permError;
+            setDbPermissions(permData || []);
+
+            const { data: roleData, error: roleError } = await supabase
+                .from('roles')
+                .select(`
+                    id,
+                    name,
+                    description,
+                    user_roles (user_id),
+                    role_permissions (permission_id)
+                `);
+            
+            if (roleError) throw roleError;
+
+            const formattedRoles = (roleData || []).map((r: any) => ({
+                id: r.id,
+                name: r.name === 'ADMIN' ? 'Administrador' : r.name === 'EDITOR' ? 'Supervisor' : 'Operador',
+                dbName: r.name,
+                description: r.description,
+                usersCount: r.user_roles?.length || 0,
+                permissions: r.role_permissions.map((rp: any) => rp.permission_id)
+            }));
+
+            setDbRoles(formattedRoles);
+
+            if (formattedRoles.length > 0) {
+                setSelectedRoleId(prev => {
+                    const currentId = prev !== null ? prev : formattedRoles[0].id;
+                    const activeRole = formattedRoles.find(role => role.id === currentId);
+                    if (activeRole) {
+                        setActivePermissions(activeRole.permissions);
+                    }
+                    return currentId;
+                });
+            }
+        } catch (err) {
+            console.error('Error al obtener roles y permisos:', err);
+        }
+    };
+
     useEffect(() => {
-        fetchUsers();
+        const verifyAdmin = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                    router.push('/login');
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('user_roles')
+                    .select('roles(name)')
+                    .eq('user_id', user.id)
+                    .single() as any;
+
+                if (!error && data?.roles?.name === 'ADMIN') {
+                    setIsAuthorized(true);
+                    fetchUsers();
+                    fetchRolesAndPermissions();
+                } else {
+                    setIsAuthorized(false);
+                }
+            } catch (err) {
+                console.error('Error verifying admin authorization:', err);
+                setIsAuthorized(false);
+            } finally {
+                setCheckingAuth(false);
+            }
+        };
+
+        verifyAdmin();
     }, []);
 
     const activeUsers = users.filter(u => u.status === 'active');
@@ -138,6 +223,91 @@ export default function UsersPage() {
         }
     };
 
+    const handleRoleChange = async (userId: string, newRoleLabel: string) => {
+        try {
+            const dbRoleName = newRoleLabel === 'Administrador' ? 'ADMIN' : newRoleLabel === 'Supervisor' ? 'EDITOR' : 'VIEWER';
+            
+            const { data: roleData, error: roleError } = await supabase
+                .from('roles')
+                .select('id')
+                .eq('name', dbRoleName)
+                .single();
+
+            if (roleError || !roleData) throw new Error('Rol no encontrado en la base de datos.');
+
+            const { error: deleteError } = await supabase
+                .from('user_roles')
+                .delete()
+                .eq('user_id', userId);
+
+            if (deleteError) throw deleteError;
+
+            const { error: insertError } = await supabase
+                .from('user_roles')
+                .insert({
+                    user_id: userId,
+                    role_id: roleData.id
+                });
+
+            if (insertError) throw insertError;
+
+            setUsers(prev => prev.map(u => u.id === userId ? { ...u, role: newRoleLabel } : u));
+        } catch (err: any) {
+            alert('Error al actualizar el rol: ' + err.message);
+        }
+    };
+
+    const handleRoleSelect = (roleId: number) => {
+        setSelectedRoleId(roleId);
+        const role = dbRoles.find(r => r.id === roleId);
+        if (role) {
+            setActivePermissions(role.permissions);
+        }
+    };
+
+    const handlePermissionToggle = (permId: number) => {
+        setActivePermissions(prev => {
+            if (prev.includes(permId)) {
+                return prev.filter(id => id !== permId);
+            } else {
+                return [...prev, permId];
+            }
+        });
+    };
+
+    const handleSavePermissions = async () => {
+        if (selectedRoleId === null) return;
+        setSavingPermissions(true);
+        try {
+            const { error: deleteError } = await supabase
+                .from('role_permissions')
+                .delete()
+                .eq('role_id', selectedRoleId);
+            
+            if (deleteError) throw deleteError;
+
+            if (activePermissions.length > 0) {
+                const insertData = activePermissions.map(pid => ({
+                    role_id: selectedRoleId,
+                    permission_id: pid
+                }));
+
+                const { error: insertError } = await supabase
+                    .from('role_permissions')
+                    .insert(insertData);
+
+                if (insertError) throw insertError;
+            }
+
+            alert('Permisos actualizados con éxito.');
+            await fetchRolesAndPermissions();
+        } catch (err: any) {
+            alert('Error al guardar permisos: ' + err.message);
+        } finally {
+            setSavingPermissions(false);
+        }
+    };
+
     const UserManagementView = () => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             <div className={styles.tableSection}>
@@ -174,9 +344,15 @@ export default function UsersPage() {
                                         <td style={{ fontWeight: 500 }}>{user.name}</td>
                                         <td>{user.email}</td>
                                         <td>
-                                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)', fontWeight: 600 }}>
-                                                {user.role}
-                                            </span>
+                                            <select
+                                                value={user.role}
+                                                onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                                className={userStyles.inlineRoleSelect}
+                                            >
+                                                <option value="Administrador">Administrador</option>
+                                                <option value="Supervisor">Supervisor</option>
+                                                <option value="Operador">Operador</option>
+                                            </select>
                                         </td>
                                         <td>{user.lastLogin}</td>
                                         <td className={styles.actionsCell}>
@@ -231,7 +407,17 @@ export default function UsersPage() {
                                     <tr key={user.id}>
                                         <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{user.name}</td>
                                         <td style={{ color: 'var(--text-secondary)' }}>{user.email}</td>
-                                        <td style={{ color: 'var(--text-secondary)' }}>{user.role}</td>
+                                        <td>
+                                            <select
+                                                value={user.role}
+                                                onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                                className={userStyles.inlineRoleSelect}
+                                            >
+                                                <option value="Administrador">Administrador</option>
+                                                <option value="Supervisor">Supervisor</option>
+                                                <option value="Operador">Operador</option>
+                                            </select>
+                                        </td>
                                         <td>
                                             <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontWeight: 600 }}>
                                                 Sin Acceso
@@ -264,11 +450,19 @@ export default function UsersPage() {
                 <div className={styles.tableWrapper}>
                     <table className={styles.table}>
                         <tbody>
-                            {roles.map(role => (
-                                <tr key={role.id}>
+                            {dbRoles.map(role => (
+                                <tr 
+                                    key={role.id}
+                                    onClick={() => handleRoleSelect(role.id)}
+                                    style={{ 
+                                        backgroundColor: role.id === selectedRoleId ? 'rgba(212, 160, 23, 0.12)' : 'transparent',
+                                        borderLeft: role.id === selectedRoleId ? '4px solid var(--primary)' : '4px solid transparent',
+                                        cursor: 'pointer'
+                                    }}
+                                >
                                     <td style={{ padding: '1.25rem' }}>
-                                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{role.name}</div>
-                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{role.users} usuarios asignados</div>
+                                        <div style={{ fontWeight: 600, color: role.id === selectedRoleId ? 'var(--primary)' : 'var(--text-primary)' }}>{role.name}</div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px' }}>{role.usersCount} usuarios asignados</div>
                                     </td>
                                 </tr>
                             ))}
@@ -278,26 +472,102 @@ export default function UsersPage() {
             </div>
             <div className={styles.tableSection}>
                 <div className={styles.tableToolbar}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Configuración de Permisos - Administrador</h3>
-                    <button className={styles.actionBtn} style={{ backgroundColor: 'var(--primary)', color: 'white' }}>
-                        <Save size={16} /> Guardar Cambios
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>
+                        Configuración de Permisos - {dbRoles.find(r => r.id === selectedRoleId)?.name || ''}
+                    </h3>
+                    <button 
+                        className={styles.actionBtn} 
+                        style={{ backgroundColor: 'var(--primary)', color: 'white', opacity: savingPermissions ? 0.6 : 1 }}
+                        onClick={handleSavePermissions}
+                        disabled={savingPermissions || selectedRoleId === null}
+                    >
+                        <Save size={16} /> {savingPermissions ? 'Guardando...' : 'Guardar Cambios'}
                     </button>
                 </div>
-                <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-                    {['Acceso Global', 'Gestionar Usuarios', 'Ver Auditoría', 'Editar Documentos', 'Eliminar Documentos', 'Aprobar Documentos', 'Exportar Data'].map((perm, idx) => (
-                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-                            <div style={{ color: 'var(--primary)' }}><Shield size={16} /></div>
-                            <span style={{ fontSize: '0.875rem' }}>{perm}</span>
-                            <div style={{ flex: 1 }} />
-                            <button style={{ background: 'none', border: 'none', color: 'var(--status-success)', cursor: 'pointer' }}>
-                                <Unlock size={16} />
-                            </button>
-                        </div>
-                    ))}
+                <div style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
+                    {dbPermissions.map((perm) => {
+                        const isAuthorized = activePermissions.includes(perm.id);
+                        return (
+                            <div 
+                                key={perm.id} 
+                                onClick={() => handlePermissionToggle(perm.id)}
+                                style={{ 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '0.75rem', 
+                                    padding: '0.75rem 1rem', 
+                                    backgroundColor: isAuthorized ? 'rgba(16, 185, 129, 0.04)' : 'rgba(255,255,255,0.01)', 
+                                    border: isAuthorized ? '1px solid rgba(16, 185, 129, 0.25)' : '1px solid var(--border)', 
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                <div style={{ color: isAuthorized ? 'var(--status-success)' : 'var(--text-secondary)' }}>
+                                    <Shield size={16} />
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isAuthorized ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                                        {perm.name}
+                                    </span>
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={perm.description}>
+                                        {perm.description}
+                                    </span>
+                                </div>
+                                <div style={{ flex: 1 }} />
+                                <button 
+                                    style={{ 
+                                        background: 'none', 
+                                        border: 'none', 
+                                        color: isAuthorized ? 'var(--status-success)' : 'var(--text-secondary)', 
+                                        cursor: 'pointer' 
+                                    }}
+                                >
+                                    {isAuthorized ? <Unlock size={16} /> : <Lock size={16} />}
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>
     );
+
+    if (checkingAuth) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '1rem', color: 'var(--text-secondary)' }}>
+                <div style={{ width: '2rem', height: '2rem', border: '3px solid rgba(212,160,23,0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                <style>{`
+                    @keyframes spin {
+                        to { transform: rotate(360deg); }
+                    }
+                `}</style>
+                <p style={{ fontSize: '0.875rem' }}>Verificando credenciales...</p>
+            </div>
+        );
+    }
+
+    if (!isAuthorized) {
+        return (
+            <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: '1.5rem', textAlign: 'center', padding: '2rem' }}>
+                <div style={{ padding: '1.5rem', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#ef4444' }}>
+                    <Shield size={48} />
+                </div>
+                <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)' }}>Acceso Restringido</h1>
+                <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', fontSize: '0.95rem', lineHeight: 1.6 }}>
+                    Esta sección es de uso exclusivo para Administradores de Paltarumi SAC. Si necesitas privilegios adicionales, solicita la aprobación de gerencia.
+                </p>
+                <button 
+                    onClick={() => router.push('/dashboard')}
+                    style={{ backgroundColor: 'var(--primary)', color: 'white', padding: '0.75rem 2rem', borderRadius: '8px', cursor: 'pointer', border: 'none', fontWeight: 600, transition: 'all 0.2s' }}
+                    onMouseOver={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                    onMouseOut={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                >
+                    Regresar al Inicio
+                </button>
+            </main>
+        );
+    }
 
     return (
         <div className={styles.container}>

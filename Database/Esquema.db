@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.users (
     second_last_name VARCHAR(30),
     email VARCHAR(255) UNIQUE NOT NULL,
     creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login TIMESTAMP,
     date_birthday DATE,
     status CHAR(1) NOT NULL CHECK (status IN ('A', 'I')) DEFAULT 'A' -- A: Activo, I: Inactivo
 );
