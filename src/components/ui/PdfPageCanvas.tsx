@@ -3,32 +3,22 @@
 import { useEffect, useRef } from 'react';
 
 interface PdfPageCanvasProps {
-    pdfData: ArrayBuffer;
+    pdfDoc: any;       // Instancia del documento PDF de pdfjs
     pageIndex: number; // 1-based
     width?: number;
 }
 
-export function PdfPageCanvas({ pdfData, pageIndex, width = 200 }: PdfPageCanvasProps) {
+export function PdfPageCanvas({ pdfDoc, pageIndex, width = 200 }: PdfPageCanvasProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
         let cancelled = false;
 
         async function render() {
-            if (!canvasRef.current) return;
+            if (!canvasRef.current || !pdfDoc) return;
 
-            // Dynamically import to avoid SSR issues
-            const pdfjsLib = await import('pdfjs-dist');
-            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-
-            // Clone ArrayBuffer for each read since it may be consumed
-            const copy = pdfData.slice(0);
-            const loadingTask = pdfjsLib.getDocument({ data: copy });
-            const pdf = await loadingTask.promise;
-
-            if (cancelled) return;
-
-            const page = await pdf.getPage(pageIndex);
+            // Obtener la página del documento parseado previamente
+            const page = await pdfDoc.getPage(pageIndex);
             if (cancelled) return;
 
             const unscaledViewport = page.getViewport({ scale: 1 });
@@ -43,13 +33,14 @@ export function PdfPageCanvas({ pdfData, pageIndex, width = 200 }: PdfPageCanvas
             canvas.width = viewport.width;
             canvas.height = viewport.height;
 
+            // Renderizar la página del PDF en el lienzo canvas
             await page.render({ canvas, canvasContext: ctx, viewport }).promise;
         }
 
         render().catch(console.error);
 
         return () => { cancelled = true; };
-    }, [pdfData, pageIndex, width]);
+    }, [pdfDoc, pageIndex, width]);
 
     return (
         <canvas

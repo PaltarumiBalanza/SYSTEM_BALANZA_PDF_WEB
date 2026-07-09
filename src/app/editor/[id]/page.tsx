@@ -11,24 +11,9 @@ interface PageItem {
     id: number;
     pageIndex: number;   // 1-based page number inside the source PDF
     source: string;      // 'original' | filename of attached pdf
-    pdfData: ArrayBuffer | null;
+    pdfDoc: any;         // Instancia del documento PDF de pdfjs
     bucket: string;       // Storage bucket ('raw-reports' o 'annex-attachments')
     path: string;         // File path inside the bucket
-}
-
-async function readPdfPages(file: File): Promise<number> {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    const buffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    return pdf.numPages;
-}
-
-async function readPdfPagesFromBuffer(buffer: ArrayBuffer): Promise<number> {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-    const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-    return pdf.numPages;
 }
 
 export default function EditorPage() {
@@ -39,7 +24,6 @@ export default function EditorPage() {
     const reportId = Array.isArray(id) ? id[0] : id;
 
     const [pages, setPages] = useState<PageItem[]>([]);
-    const [pdfBuffers, setPdfBuffers] = useState<Record<string, ArrayBuffer>>({});
 
     const [selected, setSelected] = useState<number[]>([]);
     const [signed, setSigned] = useState(false);
@@ -94,15 +78,16 @@ export default function EditorPage() {
                 }
 
                 const buffer = await fileData.arrayBuffer();
-                const numPages = await readPdfPagesFromBuffer(buffer);
+                
+                const pdfjsLib = await import('pdfjs-dist');
+                pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+                const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
 
-                setPdfBuffers({ original: buffer });
-
-                const initialPages = Array.from({ length: numPages }, (_, i) => ({
+                const initialPages = Array.from({ length: pdf.numPages }, (_, i) => ({
                     id: i + 1,
                     pageIndex: i + 1,
                     source: 'original',
-                    pdfData: buffer,
+                    pdfDoc: pdf,
                     bucket: 'raw-reports',
                     path: docData.file_link
                 }));
@@ -166,7 +151,11 @@ export default function EditorPage() {
 
         try {
             const buffer = await file.arrayBuffer();
-            const numPages = await readPdfPages(file);
+            
+            const pdfjsLib = await import('pdfjs-dist');
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+            const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+            
             const baseName = file.name;
 
             // Subir el anexo al bucket 'annex-attachments' en Supabase Storage
@@ -179,14 +168,12 @@ export default function EditorPage() {
                 throw new Error('Fallo al subir el archivo anexo a Storage: ' + uploadError.message);
             }
 
-            setPdfBuffers(prev => ({ ...prev, [baseName]: buffer }));
-
             const maxId = pages.length > 0 ? Math.max(...pages.map(p => p.id)) : 0;
-            const newPages: PageItem[] = Array.from({ length: numPages }, (_, i) => ({
+            const newPages: PageItem[] = Array.from({ length: pdf.numPages }, (_, i) => ({
                 id: maxId + i + 1,
                 pageIndex: i + 1,
                 source: baseName,
-                pdfData: buffer,
+                pdfDoc: pdf,
                 bucket: 'annex-attachments',
                 path: uploadData.path
             }));
@@ -312,10 +299,10 @@ export default function EditorPage() {
                                 />
 
                                 {/* Actual PDF content or placeholder */}
-                                {p.pdfData ? (
+                                {p.pdfDoc ? (
                                     <div className={styles.canvasWrapper}>
                                         <PdfPageCanvas
-                                            pdfData={p.pdfData}
+                                            pdfDoc={p.pdfDoc}
                                             pageIndex={p.pageIndex}
                                             width={180}
                                         />
