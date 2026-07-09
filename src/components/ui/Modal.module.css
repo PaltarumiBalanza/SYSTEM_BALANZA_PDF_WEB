@@ -172,3 +172,53 @@
     margin-top: 0.5rem;
     text-align: right;
 }
+
+.addCommentForm {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border);
+}
+
+.commentInput {
+    width: 100%;
+    min-height: 80px;
+    background-color: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    resize: vertical;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.commentInput:focus {
+    border-color: var(--primary);
+}
+
+.commentSubmitBtn {
+    align-self: flex-end;
+    padding: 0.5rem 1.25rem;
+    background-color: var(--primary);
+    border: none;
+    color: #1e1e1e; /* Texto oscuro para botón amarillo premium */
+    font-weight: 700;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: opacity 0.2s;
+}
+
+.commentSubmitBtn:hover:not(:disabled) {
+    opacity: 0.95;
+}
+
+.commentSubmitBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

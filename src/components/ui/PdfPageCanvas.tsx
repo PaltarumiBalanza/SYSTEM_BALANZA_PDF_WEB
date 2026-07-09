@@ -19,7 +19,7 @@ export function PdfPageCanvas({ pdfData, pageIndex, width = 200 }: PdfPageCanvas
 
             // Dynamically import to avoid SSR issues
             const pdfjsLib = await import('pdfjs-dist');
-            pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+            pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 
             // Clone ArrayBuffer for each read since it may be consumed
             const copy = pdfData.slice(0);

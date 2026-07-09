@@ -27,7 +27,7 @@ export default function DashboardPage() {
                     status,
                     creation_date,
                     user_id,
-                    users (first_name, last_name)
+                    users:users!user_id (first_name, last_name)
                 `)
                 .order('id', { ascending: false });
 

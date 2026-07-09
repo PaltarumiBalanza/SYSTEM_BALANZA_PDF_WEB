@@ -3,13 +3,15 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff } from 'lucide-react';
 import styles from './login.module.css';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
     const router = useRouter();
-    const [email, setEmail] = useState('elias.carmin@paltarumi.com');
-    const [password, setPassword] = useState('paltarumi123');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -104,14 +106,36 @@ export default function LoginPage() {
 
                 <div className={styles.formGroup}>
                     <label className={styles.label}>Clave Segura</label>
-                    <input 
-                        type="password" 
-                        className={styles.input} 
-                        placeholder="••••••••" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required 
-                    />
+                    <div style={{ position: 'relative' }}>
+                        <input 
+                            type={showPassword ? 'text' : 'password'} 
+                            className={styles.input} 
+                            placeholder="••••••••" 
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            required 
+                            style={{ paddingRight: '2.5rem' }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{
+                                position: 'absolute',
+                                right: '0.75rem',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-secondary)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center'
+                            }}
+                            title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                        >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
                 </div>
 
                 <button 
