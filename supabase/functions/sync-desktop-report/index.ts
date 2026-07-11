@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
               <li><strong>Archivo:</strong> ${file.name}</li>
               <li><strong>Región:</strong> ${region}</li>
               <li><strong>Operador:</strong> ${user.email}</li>
-              <li><strong>Fecha y Hora:</strong> ${new Date().toLocaleString("es-PE")}</li>
+              <li><strong>Fecha y Hora:</strong> ${new Date().toLocaleString("es-PE", { timeZone: "America/Lima" })}</li>
             </ul>
             <p>Puedes revisarlo, reordenar sus páginas y firmarlo desde el <a href="${Deno.env.get("FRONTEND_URL") || "http://localhost:3000"}/editor/${docData.id}">Editor de Reportes</a>.</p>
           `,

@@ -40,8 +40,8 @@ export function TraceabilityContent({ reportId }: { reportId: string | number })
             if (!reportId || reportId === 'user-history') {
                 // Datos de prueba para el historial de usuarios
                 setTraceData([
-                    { title: 'Inicio de sesión exitoso', time: new Date().toLocaleString('es-PE'), user: 'Sistema' },
-                    { title: 'Cambio de estado: Activo', time: new Date(Date.now() - 3600000).toLocaleString('es-PE'), user: 'Administrador' },
+                    { title: 'Inicio de sesión exitoso', time: new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' }), user: 'Sistema' },
+                    { title: 'Cambio de estado: Activo', time: new Date(Date.now() - 3600000).toLocaleString('es-PE', { timeZone: 'America/Lima' }), user: 'Administrador' },
                 ]);
                 setLoading(false);
                 return;
@@ -77,7 +77,7 @@ export function TraceabilityContent({ reportId }: { reportId: string | number })
 
                     return {
                         title,
-                        time: new Date(t.modification_date).toLocaleString('es-PE'),
+                        time: new Date(t.modification_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
                         user: userFull
                     };
                 });
@@ -151,7 +151,14 @@ export function CommentsContent({ reportId }: { reportId: string | number }) {
                     : 'U';
 
                 const date = new Date(c.creation_date);
-                const formattedTime = date.toLocaleDateString('es-PE') + ' ' + date.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+                const formattedTime = date.toLocaleString('es-PE', {
+                    timeZone: 'America/Lima',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
 
                 return {
                     id: c.id,

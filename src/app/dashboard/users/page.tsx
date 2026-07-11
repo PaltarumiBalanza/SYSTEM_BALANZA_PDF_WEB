@@ -71,7 +71,7 @@ export default function UsersPage() {
                     email: u.email || `${u.first_name.toLowerCase().replace(/\s+/g, '')}@paltarumi.com`,
                     role: roleName === 'ADMIN' ? 'Administrador' : roleName === 'EDITOR' ? 'Supervisor' : 'Operador',
                     status: u.status === 'A' ? 'active' : 'inactive',
-                    lastLogin: u.last_login ? new Date(u.last_login).toLocaleString('es-PE') : 'Nunca'
+                    lastLogin: u.last_login ? new Date(u.last_login).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Nunca'
                 };
             });
 

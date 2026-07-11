@@ -39,7 +39,7 @@ export default function DashboardPage() {
                 status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : 'error',
                 region: doc.name.includes('_LIM_') ? 'Lima' : doc.name.includes('_ANT_') ? 'Antamina' : doc.name.includes('_CUS_') ? 'Cusco' : 'General',
                 creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
-                date: new Date(doc.creation_date).toLocaleString('es-PE'),
+                date: new Date(doc.creation_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
                 comments: 0,
                 hasTrace: true
             }));
@@ -69,6 +69,30 @@ export default function DashboardPage() {
             setReports(prev => prev.filter(r => r.id !== id));
         } catch (err) {
             alert('Error al eliminar reporte: ' + (err as any).message);
+        }
+    };
+
+    const handleMarkError = async (id: string) => {
+        if (!window.confirm('¿Está seguro de que desea marcar este reporte con estado de ERROR/Falla de consistencia?')) return;
+        
+        try {
+            const { error } = await supabase
+                .from('documents')
+                .update({ status: 'ERROR' })
+                .eq('id', parseInt(id));
+
+            if (error) throw error;
+
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase.from('audit_documents').insert({
+                document_id: parseInt(id),
+                user_id: user?.id,
+                action: 'UPDATE' // Registramos como UPDATE para compatibilidad de vistas
+            });
+
+            setReports(prev => prev.map(r => r.id === id ? { ...r, status: 'error' } : r));
+        } catch (err: any) {
+            alert('Error al marcar reporte con error: ' + err.message);
         }
     };
 
@@ -218,6 +242,11 @@ export default function DashboardPage() {
                                             </button>
                                         </td>
                                         <td className={styles.actionsCell}>
+                                            {row.status !== 'error' && (
+                                                <button className={styles.errorBtn} title="Marcar con Error/Falla" onClick={() => handleMarkError(row.id)}>
+                                                    <AlertCircle size={16} />
+                                                </button>
+                                            )}
                                             <button className={styles.actionBtn} title="Ver / Editar Documento" onClick={() => router.push(`/editor/${row.id}`)}>
                                                 <Eye size={16} /> Ver PDF
                                             </button>

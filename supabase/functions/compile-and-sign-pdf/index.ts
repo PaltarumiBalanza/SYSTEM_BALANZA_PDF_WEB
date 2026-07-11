@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
           lineHeight: 14,
         });
 
-        const fechaStamp = new Date().toLocaleDateString("es-PE");
+        const fechaStamp = new Date().toLocaleDateString("es-PE", { timeZone: "America/Lima" });
         firstPage.drawText(`SUP: ID #${supervisorId}\nFec: ${fechaStamp}`, {
           x: width - 145,
           y: height - 60,

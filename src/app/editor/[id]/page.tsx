@@ -2,9 +2,10 @@
 
 import { useState, useRef, DragEvent, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical } from 'lucide-react';
+import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle } from 'lucide-react';
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
+import { ConfirmModal } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabaseClient';
 
 interface PageItem {
@@ -34,6 +35,24 @@ export default function EditorPage() {
     const [saving, setSaving] = useState(false);
     const [docMetadata, setDocMetadata] = useState<{ name: string; status: string; creatorName: string; fileLink: string } | null>(null);
 
+    const [confirmConfig, setConfirmConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        confirmText?: string;
+        onConfirm: () => void;
+        type?: 'danger' | 'warning' | 'info';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        onConfirm: () => {}
+    });
+
+    const triggerConfirm = (config: Omit<typeof confirmConfig, 'isOpen'>) => {
+        setConfirmConfig({ ...config, isOpen: true });
+    };
+
     useEffect(() => {
         const loadOriginalPdf = async () => {
             if (!reportId) return;
@@ -45,6 +64,7 @@ export default function EditorPage() {
                         name,
                         status,
                         file_link,
+                        draft_operations,
                         users:users!user_id (
                             first_name,
                             last_name
@@ -65,34 +85,82 @@ export default function EditorPage() {
                     fileLink: docData.file_link
                 });
 
-                if (!docData.file_link) {
-                    throw new Error('El reporte no tiene un archivo PDF asociado.');
+                let originalBucket = 'raw-reports';
+                let originalPath = docData.file_link;
+
+                if (docData.status === 'HECHO') {
+                    originalBucket = 'final-reports';
+                    if (docData.file_link && docData.file_link.startsWith('http')) {
+                        const parts = docData.file_link.split('/');
+                        originalPath = parts[parts.length - 1];
+                    }
                 }
 
-                const { data: fileData, error: fileError } = await supabase.storage
-                    .from('raw-reports')
-                    .download(docData.file_link);
-
-                if (fileError || !fileData) {
-                    throw new Error(fileError?.message || 'Fallo al descargar el archivo PDF original.');
-                }
-
-                const buffer = await fileData.arrayBuffer();
-                
                 const pdfjsLib = await import('pdfjs-dist');
                 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
-                const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
 
-                const initialPages = Array.from({ length: pdf.numPages }, (_, i) => ({
-                    id: i + 1,
-                    pageIndex: i + 1,
-                    source: 'original',
-                    pdfDoc: pdf,
-                    bucket: 'raw-reports',
-                    path: docData.file_link
-                }));
+                let loadedPages: PageItem[] = [];
 
-                setPages(initialPages);
+                if (docData.draft_operations && Array.isArray(docData.draft_operations) && docData.draft_operations.length > 0) {
+                    const draftOps = docData.draft_operations as any[];
+                    const uniqueFiles = Array.from(new Set(draftOps.map(op => `${op.bucket}|${op.path}`)));
+                    
+                    const docMap: Record<string, any> = {};
+                    await Promise.all(uniqueFiles.map(async (key) => {
+                        const [bucket, path] = key.split('|');
+                        const { data: fileData, error: fileError } = await supabase.storage
+                            .from(bucket)
+                            .download(path);
+                        
+                        if (!fileError && fileData) {
+                            const buffer = await fileData.arrayBuffer();
+                            const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+                            docMap[key] = pdfDoc;
+                        } else {
+                            console.error(`Fallo al descargar ${key}:`, fileError);
+                        }
+                    }));
+
+                    loadedPages = draftOps.map((op, idx) => {
+                        const key = `${op.bucket}|${op.path}`;
+                        const pdfDoc = docMap[key];
+                        const source = op.bucket === 'raw-reports' ? 'original' : op.path.split('-').pop() || 'anexo.pdf';
+                        return {
+                            id: idx + 1,
+                            pageIndex: op.pageIndex,
+                            source,
+                            pdfDoc: pdfDoc || null,
+                            bucket: op.bucket,
+                            path: op.path
+                        };
+                    });
+                } else {
+                    if (!originalPath) {
+                        throw new Error('El reporte no tiene un archivo PDF asociado.');
+                    }
+
+                    const { data: fileData, error: fileError } = await supabase.storage
+                        .from(originalBucket)
+                        .download(originalPath);
+
+                    if (fileError || !fileData) {
+                        throw new Error(fileError?.message || 'Fallo al descargar el archivo PDF.');
+                    }
+
+                    const buffer = await fileData.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+
+                    loadedPages = Array.from({ length: pdf.numPages }, (_, i) => ({
+                        id: i + 1,
+                        pageIndex: i + 1,
+                        source: 'original',
+                        pdfDoc: pdf,
+                        bucket: originalBucket,
+                        path: originalPath
+                    }));
+                }
+
+                setPages(loadedPages);
             } catch (err: any) {
                 alert('Error cargando reporte: ' + err.message);
                 router.push('/dashboard');
@@ -109,8 +177,17 @@ export default function EditorPage() {
     };
 
     const deleteSelected = () => {
-        setPages(prev => prev.filter(p => !selected.includes(p.id)));
-        setSelected([]);
+        if (!selected.length) return;
+        triggerConfirm({
+            title: 'Eliminar Páginas',
+            message: `¿Estás seguro de que deseas eliminar las ${selected.length} páginas seleccionadas de este reporte?`,
+            confirmText: 'Eliminar',
+            type: 'danger',
+            onConfirm: () => {
+                setPages(prev => prev.filter(p => !selected.includes(p.id)));
+                setSelected([]);
+            }
+        });
     };
 
     // ---- Drag-to-reorder ----
@@ -185,7 +262,7 @@ export default function EditorPage() {
         e.target.value = '';
     };
 
-    const handleSaveAndCompile = async () => {
+    const performSaveAndCompile = async () => {
         if (pages.length === 0) return;
         setSaving(true);
         try {
@@ -221,6 +298,120 @@ export default function EditorPage() {
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleSaveAndCompile = () => {
+        if (pages.length === 0) return;
+        triggerConfirm({
+            title: 'Marcar como Finalizado',
+            message: '¿Estás seguro de que deseas finalizar este reporte? Esto compilará el archivo consolidado definitivo y lo marcará como completado en el panel general.',
+            confirmText: 'Finalizar y Firmar',
+            type: 'warning',
+            onConfirm: performSaveAndCompile
+        });
+    };
+
+    const performSaveDraft = async () => {
+        if (pages.length === 0) return;
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                alert('No se detectó sesión activa de usuario. Inicie sesión nuevamente.');
+                router.push('/login');
+                return;
+            }
+
+            const operations = pages.map(p => ({
+                bucket: p.bucket,
+                path: p.path,
+                pageIndex: p.pageIndex
+            }));
+
+            const { error } = await supabase
+                .from('documents')
+                .update({
+                    draft_operations: operations
+                })
+                .eq('id', Number(reportId));
+
+            if (error) throw error;
+
+            await supabase.from('audit_documents').insert({
+                document_id: Number(reportId),
+                user_id: user.id,
+                action: 'UPDATE'
+            });
+
+            alert('Borrador guardado exitosamente.');
+        } catch (err: any) {
+            alert('Error al guardar borrador: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveDraft = () => {
+        if (pages.length === 0) return;
+        triggerConfirm({
+            title: 'Guardar Borrador',
+            message: '¿Deseas guardar la ordenación y anexos actuales como un borrador de trabajo temporal?',
+            confirmText: 'Guardar Borrador',
+            type: 'info',
+            onConfirm: performSaveDraft
+        });
+    };
+
+    const performMarkError = async () => {
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                alert('No se detectó sesión activa de usuario. Inicie sesión nuevamente.');
+                router.push('/login');
+                return;
+            }
+
+            const { error } = await supabase
+                .from('documents')
+                .update({ status: 'ERROR' })
+                .eq('id', Number(reportId));
+
+            if (error) throw error;
+
+            await supabase.from('audit_documents').insert({
+                document_id: Number(reportId),
+                user_id: user.id,
+                action: 'UPDATE'
+            });
+
+            alert('Reporte marcado con error exitosamente.');
+            router.push('/dashboard');
+        } catch (err: any) {
+            alert('Error al marcar reporte con error: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleMarkError = () => {
+        triggerConfirm({
+            title: 'Reportar Falla de Consistencia',
+            message: '¿Está seguro de que desea invalidar este reporte y marcarlo en estado de ERROR para su corrección?',
+            confirmText: 'Marcar con Error',
+            type: 'danger',
+            onConfirm: performMarkError
+        });
+    };
+
+    const handleSignStamp = () => {
+        triggerConfirm({
+            title: 'Estampar Firma de Revisado',
+            message: '¿Deseas habilitar la marca visual de "REVISADO" en la primera página de este reporte cuando sea compilado?',
+            confirmText: 'Estampar',
+            type: 'info',
+            onConfirm: () => setSigned(true)
+        });
     };
 
     const handleDownloadClick = () => {
@@ -354,7 +545,7 @@ export default function EditorPage() {
 
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Autorización</div>
-                    <button className={styles.actionBtn} onClick={() => setSigned(true)} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)' }} disabled={saving}>
+                    <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)' }} disabled={saving}>
                         <FileSignature size={18} /> Estampar Firma de Revisado
                     </button>
                     <button 
@@ -364,6 +555,24 @@ export default function EditorPage() {
                     >
                         <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Finalizado'}
                     </button>
+                    <button 
+                        className={styles.actionBtn} 
+                        onClick={handleSaveDraft}
+                        disabled={saving || pages.length === 0}
+                        style={{ marginTop: '0.5rem', borderColor: 'var(--primary)', color: 'var(--primary)' }}
+                    >
+                        <Save size={18} /> Guardar Borrador
+                    </button>
+                    {docMetadata?.status !== 'ERROR' && (
+                        <button 
+                            className={styles.actionBtn} 
+                            onClick={handleMarkError}
+                            disabled={saving}
+                            style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)' }}
+                        >
+                            <AlertCircle size={18} /> Reportar Falla (Error)
+                        </button>
+                    )}
                 </div>
 
                 <div className={styles.panelSection}>
@@ -382,6 +591,16 @@ export default function EditorPage() {
                     </div>
                 </div>
             </div>
+
+            <ConfirmModal
+                isOpen={confirmConfig.isOpen}
+                onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={confirmConfig.onConfirm}
+                title={confirmConfig.title}
+                message={confirmConfig.message}
+                confirmText={confirmConfig.confirmText}
+                type={confirmConfig.type}
+            />
         </div>
     );
 }
