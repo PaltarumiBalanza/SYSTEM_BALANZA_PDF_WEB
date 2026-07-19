@@ -54,6 +54,7 @@ Deno.serve(async (req) => {
         name: file.name,
         file_link: publicUrl.publicUrl,
         status: "PENDIENTE",
+        region: region,
       })
       .select()
       .single();

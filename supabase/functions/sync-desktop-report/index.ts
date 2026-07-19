@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
         name: file.name,
         file_link: fileLinkPath, // Guardamos la ruta del archivo en el bucket
         status: "PENDIENTE",
+        region: region,
       })
       .select()
       .single();

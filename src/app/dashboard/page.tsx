@@ -27,6 +27,7 @@ export default function DashboardPage() {
                     status,
                     creation_date,
                     user_id,
+                    region,
                     users:users!user_id (first_name, last_name)
                 `)
                 .order('id', { ascending: false });
@@ -37,7 +38,7 @@ export default function DashboardPage() {
                 id: String(doc.id),
                 name: doc.name,
                 status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : 'error',
-                region: doc.name.includes('_LIM_') ? 'Lima' : doc.name.includes('_ANT_') ? 'Antamina' : doc.name.includes('_CUS_') ? 'Cusco' : 'General',
+                region: doc.region || 'General',
                 creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
                 date: new Date(doc.creation_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
                 comments: 0,
