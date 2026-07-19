@@ -37,8 +37,10 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
 
     const links = [
         { href: '/dashboard', label: 'Reportes', icon: FileText },
-        { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck },
-        ...(isAdmin ? [{ href: '/dashboard/users', label: 'Usuarios', icon: Users }] : []),
+        ...(isAdmin ? [
+            { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck },
+            { href: '/dashboard/users', label: 'Usuarios', icon: Users }
+        ] : []),
         { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
     ];
 

@@ -1,18 +1,58 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Moon, Sun, Settings, Bell, Shield, Database, Globe, User, Palette } from 'lucide-react';
+import { Moon, Sun, Bell, User, Palette } from 'lucide-react';
 import styles from '../dashboard.module.css';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function SettingsPage() {
     const [theme, setTheme] = useState('dark');
     const [notifications, setNotifications] = useState(true);
+    const [profile, setProfile] = useState<{ firstName: string; lastName: string; role: string; email: string } | null>(null);
 
-    // Initialize theme from document attribute (set by layout or default)
+    // Initialize theme from localStorage
     useEffect(() => {
         const savedTheme = localStorage.getItem('paltarumi-theme') || 'dark';
         setTheme(savedTheme);
         document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        // Fetch active profile
+        const fetchProfile = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const { data: userData } = await supabase
+                    .from('users')
+                    .select(`
+                        first_name,
+                        last_name,
+                        email,
+                        user_roles (
+                            roles (
+                                name
+                            )
+                        )
+                    `)
+                    .eq('id', user.id)
+                    .single() as any;
+
+                if (userData) {
+                    const roleName = userData.user_roles?.[0]?.roles?.name || 'OPERATOR';
+                    const friendlyRole = roleName === 'ADMIN' ? 'Administrador' : roleName === 'SUPERVISOR' ? 'Supervisor Regional' : 'Operador';
+                    setProfile({
+                        firstName: userData.first_name || '',
+                        lastName: userData.last_name || '',
+                        role: friendlyRole,
+                        email: userData.email || user.email || ''
+                    });
+                }
+            } catch (err) {
+                console.error('Error fetching profile for settings:', err);
+            }
+        };
+
+        fetchProfile();
     }, []);
 
     const toggleTheme = (newTheme: string) => {
@@ -119,16 +159,23 @@ export default function SettingsPage() {
                     </div>
                 </div>
 
-                {/* Account Settings Placeholder */}
+                {/* Account Settings */}
                 <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <div style={{ color: 'var(--primary)', background: 'var(--primary-light)', padding: '10px', borderRadius: '12px' }}><User size={24} /></div>
                         <div>
                             <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Cuenta Personal</h3>
-                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Elias Carmin (Supervisor)</p>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                                {profile ? `${profile.firstName} ${profile.lastName} (${profile.role})` : 'Cargando perfil...'}
+                            </p>
                         </div>
                     </div>
-                    <button style={{ width: '100%', padding: '0.875rem', background: 'transparent', border: '1px solid var(--border)', borderRadius: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>Cambiar Contraseña</button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'var(--background)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Correo Electrónico</div>
+                        <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 500 }}>
+                            {profile ? profile.email : 'Cargando...'}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
