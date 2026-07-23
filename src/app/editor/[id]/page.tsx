@@ -805,10 +805,23 @@ export default function EditorPage() {
                     {/* Caso Balanza */}
                     {userRole === 'VIEWER' && (
                         <button 
-                            className={`${styles.actionBtn} ${styles.primary}`}
+                            className={styles.actionBtn}
                             onClick={handleCloseByBalanza}
                             disabled={saving || pages.length === 0}
-                            style={{ cursor: 'pointer' }}
+                            style={{ 
+                                cursor: 'pointer',
+                                backgroundColor: '#3b82f6',
+                                borderColor: '#3b82f6',
+                                color: 'white'
+                            }}
+                            onMouseOver={(e) => {
+                                e.currentTarget.style.backgroundColor = '#2563eb';
+                                e.currentTarget.style.borderColor = '#2563eb';
+                            }}
+                            onMouseOut={(e) => {
+                                e.currentTarget.style.backgroundColor = '#3b82f6';
+                                e.currentTarget.style.borderColor = '#3b82f6';
+                            }}
                         >
                             <FileSignature size={18} /> {saving ? 'Procesando...' : 'Estampar y Cerrar por Balanza'}
                         </button>
