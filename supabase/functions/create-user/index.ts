@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     // El trigger en la base de datos (on_auth_user_created) ya insertó el usuario en public.users 
     // y le asignó el rol VIEWER (Operador). Si el rol seleccionado es Administrador o Supervisor, 
     // lo actualizamos en la tabla intermedia user_roles.
-    const dbRoleName = role === "Administrador" ? "ADMIN" : role === "Supervisor" ? "EDITOR" : "VIEWER";
+    const dbRoleName = role === "Administrador" ? "ADMIN" : (role === "Supervisor" || role === "Comercial") ? "EDITOR" : "VIEWER";
 
     if (dbRoleName !== "VIEWER") {
       const { data: roleData } = await supabase

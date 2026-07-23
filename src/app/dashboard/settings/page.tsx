@@ -39,7 +39,7 @@ export default function SettingsPage() {
 
                 if (userData) {
                     const roleName = userData.user_roles?.[0]?.roles?.name || 'OPERATOR';
-                    const friendlyRole = roleName === 'ADMIN' ? 'Administrador' : roleName === 'SUPERVISOR' ? 'Supervisor Regional' : 'Operador';
+                    const friendlyRole = roleName === 'ADMIN' ? 'Administrador' : (roleName === 'EDITOR' || roleName === 'SUPERVISOR') ? 'Comercial' : 'Balanza';
                     setProfile({
                         firstName: userData.first_name || '',
                         lastName: userData.last_name || '',

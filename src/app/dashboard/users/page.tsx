@@ -14,11 +14,11 @@ import { supabase } from '@/lib/supabaseClient';
 
 const MOCK_ROLES = [
     { id: 'admin', name: 'Administrador', users: 1, permissions: ['global_access', 'manage_users', 'audit_view', 'edit_all', 'delete_all'] },
-    { id: 'supervisor', name: 'Supervisor', users: 2, permissions: ['audit_view', 'edit_region', 'approve_files'] },
-    { id: 'operador', name: 'Operador', users: 2, permissions: ['upload_files', 'view_own'] },
+    { id: 'supervisor', name: 'Comercial', users: 2, permissions: ['audit_view', 'edit_region', 'approve_files'] },
+    { id: 'operador', name: 'Balanza', users: 2, permissions: ['upload_files', 'view_own'] },
 ];
 
-const ROLES_LIST = ['Administrador', 'Supervisor', 'Operador'];
+const ROLES_LIST = ['Administrador', 'Comercial', 'Balanza'];
 
 export default function UsersPage() {
     const router = useRouter();
@@ -34,7 +34,7 @@ export default function UsersPage() {
     const [confirmAction, setConfirmAction] = useState<{ id: number, type: 'delete' | 'deactivate' | 'activate' } | null>(null);
     const [showUserTrace, setShowUserTrace] = useState<number | null>(null);
     const [showNewUserModal, setShowNewUserModal] = useState(false);
-    const [newUser, setNewUser] = useState({ name: '', email: '', role: 'Operador', password: '' });
+    const [newUser, setNewUser] = useState({ name: '', email: '', role: 'Balanza', password: '' });
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -69,7 +69,7 @@ export default function UsersPage() {
                     id: u.id,
                     name: nombreCompleto || 'Usuario sin nombre',
                     email: u.email || `${u.first_name.toLowerCase().replace(/\s+/g, '')}@paltarumi.com`,
-                    role: roleName === 'ADMIN' ? 'Administrador' : roleName === 'EDITOR' ? 'Supervisor' : 'Operador',
+                    role: roleName === 'ADMIN' ? 'Administrador' : roleName === 'EDITOR' ? 'Comercial' : 'Balanza',
                     status: u.status === 'A' ? 'active' : 'inactive',
                     lastLogin: u.last_login ? new Date(u.last_login).toLocaleString('es-PE', { timeZone: 'America/Lima' }) : 'Nunca'
                 };
@@ -106,7 +106,7 @@ export default function UsersPage() {
 
             const formattedRoles = (roleData || []).map((r: any) => ({
                 id: r.id,
-                name: r.name === 'ADMIN' ? 'Administrador' : r.name === 'EDITOR' ? 'Supervisor' : 'Operador',
+                name: r.name === 'ADMIN' ? 'Administrador' : r.name === 'EDITOR' ? 'Comercial' : 'Balanza',
                 dbName: r.name,
                 description: r.description,
                 usersCount: r.user_roles?.length || 0,
@@ -225,7 +225,7 @@ export default function UsersPage() {
 
     const handleRoleChange = async (userId: string, newRoleLabel: string) => {
         try {
-            const dbRoleName = newRoleLabel === 'Administrador' ? 'ADMIN' : newRoleLabel === 'Supervisor' ? 'EDITOR' : 'VIEWER';
+            const dbRoleName = newRoleLabel === 'Administrador' ? 'ADMIN' : newRoleLabel === 'Comercial' ? 'EDITOR' : 'VIEWER';
             
             const { data: roleData, error: roleError } = await supabase
                 .from('roles')
@@ -350,8 +350,8 @@ export default function UsersPage() {
                                                 className={userStyles.inlineRoleSelect}
                                             >
                                                 <option value="Administrador">Administrador</option>
-                                                <option value="Supervisor">Supervisor</option>
-                                                <option value="Operador">Operador</option>
+                                                <option value="Comercial">Comercial</option>
+                                                <option value="Balanza">Balanza</option>
                                             </select>
                                         </td>
                                         <td>{user.lastLogin}</td>
@@ -414,8 +414,8 @@ export default function UsersPage() {
                                                 className={userStyles.inlineRoleSelect}
                                             >
                                                 <option value="Administrador">Administrador</option>
-                                                <option value="Supervisor">Supervisor</option>
-                                                <option value="Operador">Operador</option>
+                                                <option value="Comercial">Comercial</option>
+                                                <option value="Balanza">Balanza</option>
                                             </select>
                                         </td>
                                         <td>
@@ -508,10 +508,7 @@ export default function UsersPage() {
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isAuthorized ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                                        {perm.name}
-                                    </span>
-                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={perm.description}>
-                                        {perm.description}
+                                        {perm.description || perm.name}
                                     </span>
                                 </div>
                                 <div style={{ flex: 1 }} />

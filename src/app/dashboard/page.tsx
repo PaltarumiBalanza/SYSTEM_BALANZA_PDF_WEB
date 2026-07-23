@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, FileWarning, CheckCircle, AlertCircle, Eye, Trash2, History, MessageSquare } from 'lucide-react';
+import { Search, FileWarning, CheckCircle, AlertCircle, Eye, Trash2, History, MessageSquare, ClipboardCheck } from 'lucide-react';
 import styles from './dashboard.module.css';
 import { Modal, TraceabilityContent, CommentsContent } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabaseClient';
@@ -37,7 +37,7 @@ export default function DashboardPage() {
             const formatted = (data || []).map((doc: any) => ({
                 id: String(doc.id),
                 name: doc.name,
-                status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : 'error',
+                status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO POR BALANZA' ? 'closed' : 'error',
                 region: doc.region || 'General',
                 creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
                 date: new Date(doc.creation_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
@@ -73,30 +73,6 @@ export default function DashboardPage() {
         }
     };
 
-    const handleMarkError = async (id: string) => {
-        if (!window.confirm('¿Está seguro de que desea marcar este reporte con estado de ERROR/Falla de consistencia?')) return;
-        
-        try {
-            const { error } = await supabase
-                .from('documents')
-                .update({ status: 'ERROR' })
-                .eq('id', parseInt(id));
-
-            if (error) throw error;
-
-            const { data: { user } } = await supabase.auth.getUser();
-            await supabase.from('audit_documents').insert({
-                document_id: parseInt(id),
-                user_id: user?.id,
-                action: 'UPDATE' // Registramos como UPDATE para compatibilidad de vistas
-            });
-
-            setReports(prev => prev.map(r => r.id === id ? { ...r, status: 'error' } : r));
-        } catch (err: any) {
-            alert('Error al marcar reporte con error: ' + err.message);
-        }
-    };
-
     const searchedData = reports.filter(r => {
         const query = searchQuery.toLowerCase();
         return r.id.toLowerCase().includes(query) || 
@@ -108,6 +84,7 @@ export default function DashboardPage() {
     const filteredData = filter === 'all' ? searchedData : searchedData.filter(d => d.status === filter);
 
     const pendingCount = reports.filter(r => r.status === 'pending').length;
+    const closedCount = reports.filter(r => r.status === 'closed').length;
     const successCount = reports.filter(r => r.status === 'success').length;
     const errorCount = reports.filter(r => r.status === 'error').length;
 
@@ -158,6 +135,15 @@ export default function DashboardPage() {
                     </div>
                 </div>
                 <div className={styles.statCard}>
+                    <div className={`${styles.statIcon} ${styles.closed}`}>
+                        <ClipboardCheck size={24} />
+                    </div>
+                    <div className={styles.statInfo}>
+                        <h3>{closedCount}</h3>
+                        <p>Cerrados Balanza</p>
+                    </div>
+                </div>
+                <div className={styles.statCard}>
                     <div className={`${styles.statIcon} ${styles.success}`}>
                         <CheckCircle size={24} />
                     </div>
@@ -191,6 +177,7 @@ export default function DashboardPage() {
                     <div className={styles.filterGroup}>
                         <button className={`${styles.filterBtn} ${filter === 'all' ? styles.active : ''}`} onClick={() => setFilter('all')}>Todos</button>
                         <button className={`${styles.filterBtn} ${filter === 'pending' ? styles.active : ''}`} onClick={() => setFilter('pending')}>Pendientes</button>
+                        <button className={`${styles.filterBtn} ${filter === 'closed' ? styles.active : ''}`} onClick={() => setFilter('closed')}>Cerrados Balanza</button>
                         <button className={`${styles.filterBtn} ${filter === 'success' ? styles.active : ''}`} onClick={() => setFilter('success')}>Completados</button>
                         <button className={`${styles.filterBtn} ${filter === 'error' ? styles.active : ''}`} onClick={() => setFilter('error')}>Errores</button>
                     </div>
@@ -198,12 +185,13 @@ export default function DashboardPage() {
 
                 <div className={styles.tableWrapper}>
                     {loading ? (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-                            Cargando reportes del servidor...
-                        </div>
-                    ) : filteredData.length === 0 ? (
-                        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem', color: 'var(--text-secondary)' }}>
-                            No se encontraron reportes disponibles.
+                        <div style={{ display: 'flex', justifyContent: 'center', padding: '3rem' }}>
+                            <div style={{ width: '2rem', height: '2rem', border: '3px solid rgba(212,160,23,0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                            <style>{`
+                                @keyframes spin {
+                                    to { transform: rotate(360deg); }
+                                }
+                            `}</style>
                         </div>
                     ) : (
                         <table className={styles.table}>
@@ -224,7 +212,7 @@ export default function DashboardPage() {
                                         <td style={{ fontWeight: 500, fontSize: '0.8rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.name}>{row.name}</td>
                                         <td>
                                             <span className={`${styles.statusBadge} ${styles[row.status]}`}>
-                                                {row.status === 'pending' ? 'Pendiente' : row.status === 'success' ? 'Hecho' : 'Error'}
+                                                {row.status === 'pending' ? 'Pendiente' : row.status === 'success' ? 'Hecho' : row.status === 'closed' ? 'Cerrado Balanza' : 'Error'}
                                             </span>
                                         </td>
                                         <td>{row.region}</td>
@@ -243,11 +231,6 @@ export default function DashboardPage() {
                                             </button>
                                         </td>
                                         <td className={styles.actionsCell}>
-                                            {row.status !== 'error' && (
-                                                <button className={styles.errorBtn} title="Marcar con Error/Falla" onClick={() => handleMarkError(row.id)}>
-                                                    <AlertCircle size={16} />
-                                                </button>
-                                            )}
                                             <button className={styles.actionBtn} title="Ver / Editar Documento" onClick={() => router.push(`/editor/${row.id}`)}>
                                                 <Eye size={16} /> Ver PDF
                                             </button>

@@ -2,7 +2,7 @@
 
 import { useState, useRef, DragEvent, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List } from 'lucide-react';
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
 import { ConfirmModal } from '@/components/ui/Modal';
@@ -25,7 +25,6 @@ export default function EditorPage() {
     const reportId = Array.isArray(id) ? id[0] : id;
 
     const [pages, setPages] = useState<PageItem[]>([]);
-
     const [selected, setSelected] = useState<number[]>([]);
     const [signed, setSigned] = useState(false);
     const [dragOverId, setDragOverId] = useState<number | null>(null);
@@ -34,6 +33,12 @@ export default function EditorPage() {
     const [loadingPdf, setLoadingPdf] = useState(true);
     const [saving, setSaving] = useState(false);
     const [docMetadata, setDocMetadata] = useState<{ name: string; status: string; creatorName: string; fileLink: string } | null>(null);
+    
+    // Novedades de visualización y roles
+    const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+    const [pageSize, setPageSize] = useState<'sm' | 'md' | 'lg'>('md');
+    const [userRole, setUserRole] = useState<string>('VIEWER'); // 'ADMIN', 'EDITOR' (Comercial), 'VIEWER' (Balanza)
+    const [isDraggingFiles, setIsDraggingFiles] = useState(false);
 
     const [confirmConfig, setConfirmConfig] = useState<{
         isOpen: boolean;
@@ -58,6 +63,21 @@ export default function EditorPage() {
             if (!reportId) return;
             setLoadingPdf(true);
             try {
+                // 1. Validar el rol del usuario logueado
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const { data: roleData } = await supabase
+                        .from('user_roles')
+                        .select('roles(name)')
+                        .eq('user_id', user.id)
+                        .single() as any;
+                    
+                    if (roleData?.roles?.name) {
+                        setUserRole(roleData.roles.name);
+                    }
+                }
+
+                // 2. Traer metadatos del documento
                 const { data: docData, error: docError } = await supabase
                     .from('documents')
                     .select(`
@@ -178,27 +198,17 @@ export default function EditorPage() {
 
     const deleteSelected = () => {
         if (!selected.length) return;
-        triggerConfirm({
-            title: 'Eliminar Páginas',
-            message: `¿Estás seguro de que deseas eliminar las ${selected.length} páginas seleccionadas de este reporte?`,
-            confirmText: 'Eliminar',
-            type: 'danger',
-            onConfirm: () => {
-                setPages(prev => prev.filter(p => !selected.includes(p.id)));
-                setSelected([]);
-            }
-        });
+        setPages(prev => prev.filter(p => !selected.includes(p.id)));
+        setSelected([]);
     };
 
-    // ---- Drag-to-reorder ----
+    // ---- Drag and drop reordering ----
     const onDragStart = (e: DragEvent, id: number) => {
         dragItem.current = id;
-        e.dataTransfer.effectAllowed = 'move';
     };
 
     const onDragOver = (e: DragEvent, id: number) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
         setDragOverId(id);
     };
 
@@ -219,11 +229,10 @@ export default function EditorPage() {
 
     const onDragEnd = () => setDragOverId(null);
 
-    // ---- Attach real PDF ----
+    // ---- Attach real PDF helper ----
     const handleAttachClick = () => fileInputRef.current?.click();
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const processPdfFile = async (file: File) => {
         if (!file || !file.name.toLowerCase().endsWith('.pdf')) return;
 
         try {
@@ -245,23 +254,67 @@ export default function EditorPage() {
                 throw new Error('Fallo al subir el archivo anexo a Storage: ' + uploadError.message);
             }
 
-            const maxId = pages.length > 0 ? Math.max(...pages.map(p => p.id)) : 0;
-            const newPages: PageItem[] = Array.from({ length: pdf.numPages }, (_, i) => ({
-                id: maxId + i + 1,
-                pageIndex: i + 1,
-                source: baseName,
-                pdfDoc: pdf,
-                bucket: 'annex-attachments',
-                path: uploadData.path
-            }));
-
-            setPages(prev => [...prev, ...newPages]);
+            setPages(prev => {
+                const maxId = prev.length > 0 ? Math.max(...prev.map(p => p.id)) : 0;
+                const newPages: PageItem[] = Array.from({ length: pdf.numPages }, (_, i) => ({
+                    id: maxId + i + 1,
+                    pageIndex: i + 1,
+                    source: baseName,
+                    pdfDoc: pdf,
+                    bucket: 'annex-attachments',
+                    path: uploadData.path
+                }));
+                return [...prev, ...newPages];
+            });
         } catch (err: any) {
-            alert('Error al procesar el archivo anexo: ' + err.message);
+            alert(`Error al procesar el archivo ${file.name}: ` + err.message);
+        }
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        
+        for (const file of files) {
+            await processPdfFile(file);
         }
         e.target.value = '';
     };
 
+    // ---- Drag and drop files from Windows Explorer ----
+    const handleWorkspaceDragEnter = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.types.includes('Files')) {
+            setIsDraggingFiles(true);
+        }
+    };
+
+    const handleWorkspaceDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingFiles(false);
+    };
+
+    const handleWorkspaceDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleWorkspaceDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingFiles(false);
+
+        const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
+        if (files.length === 0) return;
+
+        for (const file of files) {
+            await processPdfFile(file);
+        }
+    };
+
+    // ---- Actions ----
     const performSaveAndCompile = async () => {
         if (pages.length === 0) return;
         setSaving(true);
@@ -304,10 +357,64 @@ export default function EditorPage() {
         if (pages.length === 0) return;
         triggerConfirm({
             title: 'Marcar como Finalizado',
-            message: '¿Estás seguro de que deseas finalizar este reporte? Esto compilará el archivo consolidado definitivo y lo marcará como completado en el panel general.',
+            message: '¿Estás seguro de que deseas finalizar este reporte? Esto compilará el archivo consolidado definitivo y lo marcará como completado (Hecho) en el panel general.',
             confirmText: 'Finalizar y Firmar',
             type: 'warning',
             onConfirm: performSaveAndCompile
+        });
+    };
+
+    const performCloseByBalanza = async () => {
+        if (pages.length === 0) return;
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                alert('No se detectó sesión activa de usuario.');
+                router.push('/login');
+                return;
+            }
+
+            const operations = pages.map(p => ({
+                bucket: p.bucket,
+                path: p.path,
+                pageIndex: p.pageIndex
+            }));
+
+            // Actualizar status a 'CERRADO POR BALANZA' y guardar draft
+            const { error } = await supabase
+                .from('documents')
+                .update({
+                    status: 'CERRADO POR BALANZA',
+                    draft_operations: operations
+                })
+                .eq('id', Number(reportId));
+
+            if (error) throw error;
+
+            await supabase.from('audit_documents').insert({
+                document_id: Number(reportId),
+                user_id: user.id,
+                action: 'CLOSE' // Registrado como cierre de balanza
+            });
+
+            alert('Reporte cerrado por Balanza exitosamente.');
+            router.push('/dashboard');
+        } catch (err: any) {
+            alert('Error al cerrar por Balanza: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCloseByBalanza = () => {
+        if (pages.length === 0) return;
+        triggerConfirm({
+            title: 'Cerrar por Balanza',
+            message: '¿Estás seguro de que deseas colocar la firma de revisado y marcar este reporte como CERRADO POR BALANZA?',
+            confirmText: 'Cerrar por Balanza',
+            type: 'info',
+            onConfirm: performCloseByBalanza
         });
     };
 
@@ -382,7 +489,7 @@ export default function EditorPage() {
             await supabase.from('audit_documents').insert({
                 document_id: Number(reportId),
                 user_id: user.id,
-                action: 'UPDATE'
+                action: 'ERROR_MARKED'
             });
 
             alert('Reporte marcado con error exitosamente.');
@@ -422,6 +529,25 @@ export default function EditorPage() {
         }
     };
 
+    const canvasWidth = pageSize === 'sm' ? 110 : pageSize === 'md' ? 180 : 300;
+    const cardWidth = pageSize === 'sm' ? '120px' : pageSize === 'md' ? '190px' : '310px';
+
+    const gridStyle = layoutMode === 'list'
+        ? {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            alignItems: 'center',
+            gap: '2rem',
+            width: '100%'
+          }
+        : {
+            display: 'grid',
+            gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}, 1fr))`,
+            gap: '2rem',
+            width: '100%',
+            maxWidth: '900px'
+          };
+
     if (loadingPdf) {
         return (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: 'var(--background)', gap: '1rem', color: 'var(--text-secondary)' }}>
@@ -444,12 +570,13 @@ export default function EditorPage() {
                 ref={fileInputRef}
                 style={{ display: 'none' }}
                 onChange={handleFileChange}
+                multiple
             />
 
             <div className={styles.leftPanel}>
                 <div className={styles.pdfHeader}>
                     <div className={styles.headerTitle}>
-                        <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard">
+                        <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                             <ArrowLeft size={20} />
                         </button>
                         Reporte: {docMetadata?.name || `Balanza #${reportId}`}
@@ -459,12 +586,42 @@ export default function EditorPage() {
                     </div>
                 </div>
 
-                <div className={styles.pdfScroll}>
-                    <div className={styles.grid}>
+                <div 
+                    className={styles.pdfScroll}
+                    onDragEnter={handleWorkspaceDragEnter}
+                    onDragOver={handleWorkspaceDragOver}
+                    onDragLeave={handleWorkspaceDragLeave}
+                    onDrop={handleWorkspaceDrop}
+                    style={{ position: 'relative' }}
+                >
+                    {isDraggingFiles && (
+                        <div style={{
+                            position: 'absolute',
+                            inset: '2rem',
+                            border: '3px dashed var(--primary)',
+                            borderRadius: 'var(--radius-lg)',
+                            backgroundColor: 'rgba(212, 160, 23, 0.08)',
+                            backdropFilter: 'blur(4px)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '1rem',
+                            zIndex: 100,
+                            pointerEvents: 'none'
+                        }}>
+                            <Paperclip size={48} color="var(--primary)" style={{ animation: 'bounce 1s infinite' }} />
+                            <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Suelte los archivos aquí</span>
+                            <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Se cargarán y anexarán automáticamente al final del reporte</span>
+                        </div>
+                    )}
+
+                    <div style={gridStyle}>
                         {pages.map((p, idx) => (
                             <div
                                 key={p.id}
                                 className={`${styles.pageCard} ${selected.includes(p.id) ? styles.selected : ''} ${dragOverId === p.id ? styles.dragOver : ''}`}
+                                style={{ width: cardWidth }}
                                 draggable
                                 onDragStart={(e) => onDragStart(e, p.id)}
                                 onDragOver={(e) => onDragOver(e, p.id)}
@@ -472,7 +629,7 @@ export default function EditorPage() {
                                 onDragEnd={onDragEnd}
                                 onClick={() => toggleSelect(p.id)}
                             >
-                                {/* Page number badge (position in document) */}
+                                {/* Page number badge */}
                                 <div className={styles.pageNumber}>{idx + 1}</div>
 
                                 {/* Drag handle */}
@@ -489,13 +646,13 @@ export default function EditorPage() {
                                     onClick={(e) => e.stopPropagation()}
                                 />
 
-                                {/* Actual PDF content or placeholder */}
+                                {/* Actual PDF content */}
                                 {p.pdfDoc ? (
                                     <div className={styles.canvasWrapper}>
                                         <PdfPageCanvas
                                             pdfDoc={p.pdfDoc}
                                             pageIndex={p.pageIndex}
-                                            width={180}
+                                            width={canvasWidth}
                                         />
                                     </div>
                                 ) : (
@@ -529,15 +686,82 @@ export default function EditorPage() {
             </div>
 
             <div className={styles.rightPanel}>
+                {/* Visual Options */}
+                <div className={styles.panelSection}>
+                    <div className={styles.panelTitle}>Opciones de Visualización</div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <button 
+                            onClick={() => setLayoutMode('grid')}
+                            style={{ 
+                                flex: 1, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                gap: '0.5rem', 
+                                padding: '0.5rem', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '6px', 
+                                background: layoutMode === 'grid' ? 'var(--primary-light)' : 'transparent',
+                                color: layoutMode === 'grid' ? 'var(--primary)' : 'var(--text-secondary)',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <LayoutGrid size={16} /> Cuadrícula
+                        </button>
+                        <button 
+                            onClick={() => setLayoutMode('list')}
+                            style={{ 
+                                flex: 1, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                gap: '0.5rem', 
+                                padding: '0.5rem', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '6px', 
+                                background: layoutMode === 'list' ? 'var(--primary-light)' : 'transparent',
+                                color: layoutMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <List size={16} /> Lista
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        {(['sm', 'md', 'lg'] as const).map(size => (
+                            <button
+                                key={size}
+                                onClick={() => setPageSize(size)}
+                                style={{
+                                    flex: 1,
+                                    padding: '0.4rem',
+                                    fontSize: '0.75rem',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '6px',
+                                    background: pageSize === size ? 'var(--primary-light)' : 'transparent',
+                                    color: pageSize === size ? 'var(--primary)' : 'var(--text-secondary)',
+                                    fontWeight: 600,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {size === 'sm' ? 'Chico' : size === 'md' ? 'Mediano' : 'Grande'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Acciones de Edición</div>
-                    <button className={styles.actionBtn} onClick={handleAttachClick} disabled={saving}>
+                    <button className={styles.actionBtn} onClick={handleAttachClick} disabled={saving} style={{ cursor: 'pointer' }}>
                         <Paperclip size={18} /> Adjuntar PDF (Concatenar)
                     </button>
                     <button
                         className={`${styles.actionBtn} ${selected.length ? styles.danger : ''}`}
                         onClick={deleteSelected}
                         disabled={!selected.length || saving}
+                        style={{ cursor: 'pointer' }}
                     >
                         <Trash2 size={18} /> Eliminar Seleccionadas ({selected.length})
                     </button>
@@ -545,21 +769,38 @@ export default function EditorPage() {
 
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Autorización</div>
-                    <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)' }} disabled={saving}>
-                        <FileSignature size={18} /> Estampar Firma de Revisado
-                    </button>
-                    <button 
-                        className={`${styles.actionBtn} ${styles.primary}`} 
-                        onClick={handleSaveAndCompile}
-                        disabled={saving || pages.length === 0}
-                    >
-                        <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Finalizado'}
-                    </button>
+                    {/* Caso Comercial / Admin */}
+                    {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && (
+                        <>
+                            <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)', cursor: 'pointer' }} disabled={saving}>
+                                <FileSignature size={18} /> Estampar Firma de Revisado
+                            </button>
+                            <button 
+                                className={`${styles.actionBtn} ${styles.primary}`} 
+                                onClick={handleSaveAndCompile}
+                                disabled={saving || pages.length === 0}
+                                style={{ cursor: 'pointer' }}
+                            >
+                                <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Finalizado'}
+                            </button>
+                        </>
+                    )}
+                    {/* Caso Balanza */}
+                    {userRole === 'VIEWER' && (
+                        <button 
+                            className={`${styles.actionBtn} ${styles.primary}`}
+                            onClick={handleCloseByBalanza}
+                            disabled={saving || pages.length === 0}
+                            style={{ cursor: 'pointer' }}
+                        >
+                            <FileSignature size={18} /> {saving ? 'Procesando...' : 'Estampar y Cerrar por Balanza'}
+                        </button>
+                    )}
                     <button 
                         className={styles.actionBtn} 
                         onClick={handleSaveDraft}
                         disabled={saving || pages.length === 0}
-                        style={{ marginTop: '0.5rem', borderColor: 'var(--primary)', color: 'var(--primary)' }}
+                        style={{ marginTop: '0.5rem', borderColor: 'var(--primary)', color: 'var(--primary)', cursor: 'pointer' }}
                     >
                         <Save size={18} /> Guardar Borrador
                     </button>
@@ -568,7 +809,7 @@ export default function EditorPage() {
                             className={styles.actionBtn} 
                             onClick={handleMarkError}
                             disabled={saving}
-                            style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)' }}
+                            style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)', cursor: 'pointer' }}
                         >
                             <AlertCircle size={18} /> Reportar Falla (Error)
                         </button>
@@ -577,7 +818,7 @@ export default function EditorPage() {
 
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Exportar</div>
-                    <button className={styles.actionBtn} onClick={handleDownloadClick} disabled={saving}>
+                    <button className={styles.actionBtn} onClick={handleDownloadClick} disabled={saving} style={{ cursor: 'pointer' }}>
                         <Printer size={18} /> Descargar PDF Completo
                     </button>
                 </div>
