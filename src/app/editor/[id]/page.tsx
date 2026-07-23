@@ -34,11 +34,12 @@ export default function EditorPage() {
     const [saving, setSaving] = useState(false);
     const [docMetadata, setDocMetadata] = useState<{ name: string; status: string; creatorName: string; fileLink: string } | null>(null);
     
-    // Novedades de visualización y roles
+    // Novedades de visualización, zoom, roles y lector hoja por hoja
     const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
     const [pageSize, setPageSize] = useState<'sm' | 'md' | 'lg'>('md');
     const [userRole, setUserRole] = useState<string>('VIEWER'); // 'ADMIN', 'EDITOR' (Comercial), 'VIEWER' (Balanza)
     const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+    const [previewPageIndex, setPreviewPageIndex] = useState<number | null>(null); // 0-based index para vista hoja por hoja
 
     const [confirmConfig, setConfirmConfig] = useState<{
         isOpen: boolean;
@@ -56,6 +57,15 @@ export default function EditorPage() {
 
     const triggerConfirm = (config: Omit<typeof confirmConfig, 'isOpen'>) => {
         setConfirmConfig({ ...config, isOpen: true });
+    };
+
+    // Sanitizador de nombres de archivos para evitar errores en las llaves del Storage de Supabase
+    const sanitizeFileName = (fileName: string): string => {
+        return fileName
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Remueve acentos
+            .replace(/[ñÑ]/g, "n")
+            .replace(/[^a-zA-Z0-9.-]/g, "_"); // Reemplaza espacios y símbolos extraños por guiones bajos
     };
 
     useEffect(() => {
@@ -243,9 +253,10 @@ export default function EditorPage() {
             const pdf = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
             
             const baseName = file.name;
+            const sanitizedName = sanitizeFileName(baseName);
 
-            // Subir el anexo al bucket 'annex-attachments' en Supabase Storage
-            const annexPath = `${reportId}-annex-${Date.now()}-${baseName}`;
+            // Subir el anexo al bucket 'annex-attachments' en Supabase Storage usando clave sanitizada
+            const annexPath = `${reportId}-annex-${Date.now()}-${sanitizedName}`;
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('annex-attachments')
                 .upload(annexPath, file, { contentType: 'application/pdf', upsert: true });
@@ -259,7 +270,7 @@ export default function EditorPage() {
                 const newPages: PageItem[] = Array.from({ length: pdf.numPages }, (_, i) => ({
                     id: maxId + i + 1,
                     pageIndex: i + 1,
-                    source: baseName,
+                    source: baseName, // Conservamos el nombre original legible para la interfaz
                     pdfDoc: pdf,
                     bucket: 'annex-attachments',
                     path: uploadData.path
@@ -529,6 +540,10 @@ export default function EditorPage() {
         }
     };
 
+    const handleDoubleClickPage = (idx: number) => {
+        setPreviewPageIndex(idx);
+    };
+
     const canvasWidth = pageSize === 'sm' ? 110 : pageSize === 'md' ? 180 : 300;
     const cardWidth = pageSize === 'sm' ? '120px' : pageSize === 'md' ? '190px' : '310px';
 
@@ -628,6 +643,8 @@ export default function EditorPage() {
                                 onDrop={(e) => onDrop(e, p.id)}
                                 onDragEnd={onDragEnd}
                                 onClick={() => toggleSelect(p.id)}
+                                onDoubleClick={() => handleDoubleClickPage(idx)}
+                                title="Doble clic para ver en tamaño completo"
                             >
                                 {/* Page number badge */}
                                 <div className={styles.pageNumber}>{idx + 1}</div>
@@ -842,6 +859,138 @@ export default function EditorPage() {
                 confirmText={confirmConfig.confirmText}
                 type={confirmConfig.type}
             />
+
+            {/* Lightbox / Visualizador Hoja por Hoja Nítido */}
+            {previewPageIndex !== null && (
+                <div 
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        backgroundColor: 'rgba(0,0,0,0.85)',
+                        backdropFilter: 'blur(8px)',
+                        zIndex: 2000,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '2rem'
+                    }} 
+                    onClick={() => setPreviewPageIndex(null)}
+                >
+                    <button 
+                        onClick={() => setPreviewPageIndex(null)}
+                        style={{
+                            position: 'absolute',
+                            top: '1.5rem',
+                            right: '1.5rem',
+                            background: 'rgba(255,255,255,0.15)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            color: 'white',
+                            width: '40px',
+                            height: '40px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.2rem',
+                            fontWeight: 'bold',
+                            transition: 'background-color 0.2s'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.3)'}
+                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'}
+                    >
+                        ✕
+                    </button>
+
+                    <div 
+                        style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '2rem', 
+                            width: '100%', 
+                            maxWidth: '1200px', 
+                            justifyContent: 'space-between' 
+                        }} 
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Botón Anterior */}
+                        <button 
+                            disabled={previewPageIndex === 0}
+                            onClick={() => setPreviewPageIndex(prev => prev !== null && prev > 0 ? prev - 1 : prev)}
+                            style={{
+                                background: 'rgba(255,255,255,0.15)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                color: 'white',
+                                width: '50px',
+                                height: '50px',
+                                cursor: previewPageIndex === 0 ? 'not-allowed' : 'pointer',
+                                opacity: previewPageIndex === 0 ? 0.3 : 1,
+                                fontSize: '1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'background-color 0.2s'
+                            }}
+                            onMouseOver={(e) => { if (previewPageIndex !== 0) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.3)'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
+                        >
+                            ◀
+                        </button>
+
+                        {/* Visor del PDF Ampliado */}
+                        <div style={{ 
+                            background: 'var(--surface)', 
+                            padding: '1.5rem', 
+                            borderRadius: '12px', 
+                            border: '1px solid var(--border)',
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            maxWidth: '80%',
+                            gap: '1.25rem'
+                        }}>
+                            <div style={{ width: '100%', height: '70vh', overflow: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '450px' }}>
+                                <PdfPageCanvas 
+                                    pdfDoc={pages[previewPageIndex].pdfDoc}
+                                    pageIndex={pages[previewPageIndex].pageIndex}
+                                    width={750} // Súper alta resolución + High DPI
+                                />
+                            </div>
+                            <div style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem', textAlign: 'center' }}>
+                                Hoja {previewPageIndex + 1} de {pages.length} | Origen: {pages[previewPageIndex].source}
+                            </div>
+                        </div>
+
+                        {/* Botón Siguiente */}
+                        <button 
+                            disabled={previewPageIndex === pages.length - 1}
+                            onClick={() => setPreviewPageIndex(prev => prev !== null && prev < pages.length - 1 ? prev + 1 : prev)}
+                            style={{
+                                background: 'rgba(255,255,255,0.15)',
+                                border: 'none',
+                                borderRadius: '50%',
+                                color: 'white',
+                                width: '50px',
+                                height: '50px',
+                                cursor: previewPageIndex === pages.length - 1 ? 'not-allowed' : 'pointer',
+                                opacity: previewPageIndex === pages.length - 1 ? 0.3 : 1,
+                                fontSize: '1.5rem',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'background-color 0.2s'
+                            }}
+                            onMouseOver={(e) => { if (previewPageIndex !== pages.length - 1) e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.3)'; }}
+                            onMouseOut={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'; }}
+                        >
+                            ▶
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
