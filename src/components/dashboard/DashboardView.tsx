@@ -46,19 +46,22 @@ export function DashboardView({ company }: DashboardViewProps) {
                 status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO POR BALANZA' ? 'closed' : 'error',
                 region: doc.region || 'General',
                 creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
-                date: new Date(
-                    doc.creation_date 
-                        ? (doc.creation_date.endsWith('Z') ? doc.creation_date : `${doc.creation_date}Z`) 
-                        : Date.now()
-                ).toLocaleString('es-PE', { 
-                    timeZone: 'America/Lima',
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true
-                }),
+                date: (() => {
+                    if (!doc.creation_date) return '';
+                    const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(doc.creation_date);
+                    const cleanStr = doc.creation_date.includes('T') ? doc.creation_date : doc.creation_date.replace(' ', 'T');
+                    const finalStr = hasTz ? cleanStr : `${cleanStr}Z`;
+                    const parsed = new Date(finalStr);
+                    return isNaN(parsed.getTime()) ? '' : parsed.toLocaleString('es-PE', { 
+                        timeZone: 'America/Lima',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                })(),
                 comments: 0,
                 hasTrace: true
             }));
