@@ -15,6 +15,7 @@ Deno.serve(async (req) => {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const region = formData.get("region") as string || "Sin Región";
+    const company = formData.get("company") as string || formData.get("empresa") as string || "PSAC";
     const creatorId = formData.get("creator_id") as string; // user_id del operador/sistema
 
     if (!file) {
@@ -55,6 +56,7 @@ Deno.serve(async (req) => {
         file_link: publicUrl.publicUrl,
         status: "PENDIENTE",
         region: region,
+        company: company.toUpperCase() === "ECOGOLD" ? "ECOGOLD" : "PSAC",
       })
       .select()
       .single();

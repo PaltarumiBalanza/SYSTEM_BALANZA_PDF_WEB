@@ -2,6 +2,6 @@
 
 import { DashboardView } from '@/components/dashboard/DashboardView';
 
-export default function DashboardPage() {
-    return <DashboardView company="PSAC" />;
+export default function EcogoldPage() {
+    return <DashboardView company="ECOGOLD" />;
 }

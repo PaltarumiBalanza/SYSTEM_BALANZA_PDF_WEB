@@ -44,6 +44,7 @@ Deno.serve(async (req) => {
     const formData = await req.formData();
     const file = formData.get("file") as File;
     const region = formData.get("region") as string || "Sin Región";
+    const company = formData.get("company") as string || formData.get("empresa") as string || "PSAC";
 
     if (!file) {
       return new Response(
@@ -83,6 +84,7 @@ Deno.serve(async (req) => {
         file_link: fileLinkPath, // Guardamos la ruta del archivo en el bucket
         status: "PENDIENTE",
         region: region,
+        company: company.toUpperCase() === "ECOGOLD" ? "ECOGOLD" : "PSAC",
       })
       .select()
       .single();
