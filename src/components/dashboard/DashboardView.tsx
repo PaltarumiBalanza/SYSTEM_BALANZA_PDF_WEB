@@ -46,7 +46,19 @@ export function DashboardView({ company }: DashboardViewProps) {
                 status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO POR BALANZA' ? 'closed' : 'error',
                 region: doc.region || 'General',
                 creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
-                date: new Date(doc.creation_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
+                date: new Date(
+                    doc.creation_date 
+                        ? (doc.creation_date.endsWith('Z') ? doc.creation_date : `${doc.creation_date}Z`) 
+                        : Date.now()
+                ).toLocaleString('es-PE', { 
+                    timeZone: 'America/Lima',
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                }),
                 comments: 0,
                 hasTrace: true
             }));
@@ -204,6 +216,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                             <thead>
                                 <tr>
                                     <th>Nombre Documento</th>
+                                    <th>Fecha</th>
                                     <th>Estado</th>
                                     <th>Región</th>
                                     <th>Creador</th>
@@ -216,6 +229,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                                 {filteredData.map(row => (
                                     <tr key={row.id}>
                                         <td style={{ fontWeight: 500, fontSize: '0.8rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.name}>{row.name}</td>
+                                        <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{row.date}</td>
                                         <td>
                                             <span className={`${styles.statusBadge} ${styles[row.status]}`}>
                                                 {row.status === 'pending' ? 'Pendiente' : row.status === 'success' ? 'Hecho' : row.status === 'closed' ? 'Cerrado Balanza' : 'Error'}
