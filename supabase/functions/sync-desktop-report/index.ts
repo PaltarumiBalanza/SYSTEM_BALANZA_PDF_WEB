@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { jwtVerify } from "npm:jose@5";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -23,22 +24,34 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     
-    // Inicializar cliente estándar con el token del usuario para validar sesión
-    const supabaseUserClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!
-    );
+    let creatorId: string;
 
-    const { data: { user }, error: authError } = await supabaseUserClient.auth.getUser(token);
+    try {
+      const jwtSecret = Deno.env.get("JWT_SECRET");
+      if (jwtSecret) {
+        // Verificar la firma del JWT con la clave secreta de Supabase, ignorando la expiración
+        const { payload } = await jwtVerify(
+          token,
+          new TextEncoder().encode(jwtSecret),
+          { ignoreExpiration: true }
+        );
+        creatorId = payload.sub as string;
+      } else {
+        // Fallback local decodificando el payload sin firma
+        const payloadBase64 = token.split(".")[1];
+        const payloadDecoded = JSON.parse(atob(payloadBase64));
+        creatorId = payloadDecoded.sub;
+      }
 
-    if (authError || !user) {
+      if (!creatorId) {
+        throw new Error("Token malformado: no contiene el campo 'sub'.");
+      }
+    } catch (authError: any) {
       return new Response(
-        JSON.stringify({ error: "Sesión inválida o expirada. Vuelva a iniciar sesión desde el sistema de escritorio." }),
+        JSON.stringify({ error: `Token inválido: ${authError.message}` }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const creatorId = user.id; // UUID del operador que sube el reporte
 
     // 2. Procesar el archivo y metadatos del cuerpo multipart/formData
     const formData = await req.formData();
