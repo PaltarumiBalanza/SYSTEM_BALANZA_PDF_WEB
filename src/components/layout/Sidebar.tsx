@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText, Activity, LogOut, Settings, ClipboardCheck, Users, Building } from 'lucide-react';
+import { FileText, Activity, LogOut, Settings, ClipboardCheck, Users, Building, Briefcase } from 'lucide-react';
 import styles from './layout.module.css';
 
 import { useState, useEffect } from 'react';
@@ -38,6 +38,7 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
     const links = [
         { href: '/dashboard', label: 'PSAC', icon: FileText },
         { href: '/dashboard/ecogold', label: 'ECOGOLD', icon: Building },
+        { href: '/dashboard/customers', label: 'Customers', icon: Briefcase },
         ...(isAdmin ? [
             { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck },
             { href: '/dashboard/users', label: 'Usuarios', icon: Users }
