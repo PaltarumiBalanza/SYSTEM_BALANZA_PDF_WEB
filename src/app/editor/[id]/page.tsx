@@ -2,7 +2,7 @@
 
 import { useState, useRef, DragEvent, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List } from 'lucide-react';
+import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List, Edit, Loader2 } from 'lucide-react';
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
 import { ConfirmModal } from '@/components/ui/Modal';
@@ -40,6 +40,9 @@ export default function EditorPage() {
     const [userRole, setUserRole] = useState<string>('VIEWER'); // 'ADMIN', 'EDITOR' (Comercial), 'VIEWER' (Balanza)
     const [isDraggingFiles, setIsDraggingFiles] = useState(false);
     const [previewPageIndex, setPreviewPageIndex] = useState<number | null>(null); // 0-based index para vista hoja por hoja
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [tempName, setTempName] = useState('');
+    const [renaming, setRenaming] = useState(false);
 
     const [confirmConfig, setConfirmConfig] = useState<{
         isOpen: boolean;
@@ -532,6 +535,59 @@ export default function EditorPage() {
         });
     };
 
+    const handleRenameSave = async () => {
+        if (!tempName.trim()) {
+            alert('El nombre del archivo no puede estar vacío.');
+            return;
+        }
+
+        const cleanName = sanitizeFileName(tempName.trim());
+        if (!cleanName) {
+            alert('El nombre del archivo no es válido.');
+            return;
+        }
+
+        setRenaming(true);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                alert('No se pudo verificar la sesión. Inicie sesión nuevamente.');
+                return;
+            }
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/rename-document`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                    documentId: parseInt(reportId || ''),
+                    newName: cleanName
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.error) {
+                throw new Error(result.error || 'Ocurrió un error al renombrar el archivo.');
+            }
+
+            setDocMetadata(prev => prev ? {
+                ...prev,
+                name: result.document.name,
+                fileLink: result.file_link
+            } : null);
+
+            setIsEditingName(false);
+            alert('Nombre de archivo actualizado con éxito.');
+        } catch (err: any) {
+            alert('Error al renombrar: ' + err.message);
+        } finally {
+            setRenaming(false);
+        }
+    };
+
     const handleDownloadClick = () => {
         if (docMetadata?.status === 'HECHO' && docMetadata?.fileLink) {
             window.open(docMetadata.fileLink, '_blank');
@@ -590,12 +646,101 @@ export default function EditorPage() {
 
             <div className={styles.leftPanel}>
                 <div className={styles.pdfHeader}>
-                    <div className={styles.headerTitle}>
-                        <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                            <ArrowLeft size={20} />
-                        </button>
-                        Reporte: {docMetadata?.name || `Balanza #${reportId}`}
-                    </div>
+                    {isEditingName ? (
+                        <div className={styles.headerTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                            <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                <ArrowLeft size={20} />
+                            </button>
+                            <span style={{ whiteSpace: 'nowrap' }}>Reporte: </span>
+                            <input
+                                type="text"
+                                value={tempName}
+                                onChange={(e) => setTempName(e.target.value)}
+                                disabled={renaming}
+                                style={{
+                                    backgroundColor: 'var(--background)',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-primary)',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontSize: '0.9rem',
+                                    width: '250px',
+                                    outline: 'none'
+                                }}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleRenameSave();
+                                    if (e.key === 'Escape') setIsEditingName(false);
+                                }}
+                            />
+                            <button 
+                                onClick={handleRenameSave} 
+                                disabled={renaming}
+                                style={{
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: 'var(--primary)',
+                                    color: 'var(--surface)',
+                                    border: 'none',
+                                    borderRadius: 'var(--radius-sm)',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem'
+                                }}
+                            >
+                                {renaming ? (
+                                    <>
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                        <span>Guardando...</span>
+                                    </>
+                                ) : 'Guardar'}
+                            </button>
+                            <button 
+                                onClick={() => setIsEditingName(false)} 
+                                disabled={renaming}
+                                style={{
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: 'transparent',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    cursor: 'pointer',
+                                    fontSize: '0.8rem'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                        </div>
+                    ) : (
+                        <div className={styles.headerTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                <ArrowLeft size={20} />
+                            </button>
+                            <span>Reporte: {docMetadata?.name || `Balanza #${reportId}`}</span>
+                            {docMetadata && (
+                                <button
+                                    onClick={() => {
+                                        setTempName(docMetadata.name.replace(/\.[^/.]+$/, ""));
+                                        setIsEditingName(true);
+                                    }}
+                                    title="Renombrar Reporte"
+                                    style={{
+                                        background: 'none',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        color: 'var(--text-secondary)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        padding: '0.25rem'
+                                    }}
+                                >
+                                    <Edit size={16} />
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <div className={styles.headerTitle} style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                         Operador: {docMetadata?.creatorName || 'Cargando...'} | Estado: {docMetadata?.status || 'Pendiente'}
                     </div>

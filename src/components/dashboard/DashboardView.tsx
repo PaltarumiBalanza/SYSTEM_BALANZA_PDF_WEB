@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, FileWarning, CheckCircle, AlertCircle, Eye, Trash2, History, MessageSquare, ClipboardCheck } from 'lucide-react';
+import { Search, FileWarning, CheckCircle, AlertCircle, Eye, Trash2, History, MessageSquare, ClipboardCheck, Edit, Loader2, Check, X } from 'lucide-react';
 import styles from '@/app/dashboard/dashboard.module.css';
 import { Modal, TraceabilityContent, CommentsContent } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabaseClient';
@@ -19,6 +19,17 @@ export function DashboardView({ company }: DashboardViewProps) {
     const [openModal, setOpenModal] = useState<'none' | 'trace' | 'comments'>('none');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [tempName, setTempName] = useState('');
+    const [renamingId, setRenamingId] = useState<string | null>(null);
+
+    const sanitizeFileName = (fileName: string): string => {
+        return fileName
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // Remueve acentos
+            .replace(/[ñÑ]/g, "n")
+            .replace(/[^a-zA-Z0-9.-]/g, "_"); // Reemplaza espacios y símbolos extraños por guiones bajos
+    };
 
     const fetchReports = async () => {
         setLoading(true);
@@ -71,6 +82,75 @@ export function DashboardView({ company }: DashboardViewProps) {
             console.error('Error al obtener reportes:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleRename = async (id: string) => {
+        if (!tempName.trim()) {
+            alert('El nombre del archivo no puede estar vacío.');
+            return;
+        }
+
+        const cleanName = sanitizeFileName(tempName.trim());
+        if (!cleanName) {
+            alert('El nombre del archivo no es válido.');
+            return;
+        }
+
+        setRenamingId(id);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                alert('No se pudo verificar la sesión. Inicie sesión nuevamente.');
+                return;
+            }
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/rename-document`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({
+                    documentId: parseInt(id),
+                    newName: cleanName
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || result.error) {
+                throw new Error(result.error || 'Error al renombrar el reporte.');
+            }
+
+            setReports(prev => prev.map(r => r.id === id ? { 
+                ...r, 
+                name: result.document.name,
+                date: (() => {
+                    const docDate = result.document.creation_date;
+                    if (!docDate) return r.date;
+                    const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(docDate);
+                    const cleanStr = docDate.includes('T') ? docDate : docDate.replace(' ', 'T');
+                    const finalStr = hasTz ? cleanStr : `${cleanStr}Z`;
+                    const parsed = new Date(finalStr);
+                    return isNaN(parsed.getTime()) ? r.date : parsed.toLocaleString('es-PE', { 
+                        timeZone: 'America/Lima',
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                })()
+            } : r));
+            
+            setEditingId(null);
+            alert('Reporte renombrado con éxito.');
+        } catch (err: any) {
+            alert('Error al renombrar: ' + err.message);
+        } finally {
+            setRenamingId(null);
         }
     };
 
@@ -231,7 +311,78 @@ export function DashboardView({ company }: DashboardViewProps) {
                             <tbody>
                                 {filteredData.map(row => (
                                     <tr key={row.id}>
-                                        <td style={{ fontWeight: 500, fontSize: '0.8rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.name}>{row.name}</td>
+                                        {editingId === row.id ? (
+                                            <td style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '1rem 0.5rem', minWidth: '220px' }}>
+                                                <input
+                                                    type="text"
+                                                    value={tempName}
+                                                    onChange={(e) => setTempName(e.target.value)}
+                                                    disabled={renamingId === row.id}
+                                                    style={{
+                                                        backgroundColor: 'var(--background)',
+                                                        border: '1px solid var(--border)',
+                                                        color: 'var(--text-primary)',
+                                                        padding: '0.25rem 0.5rem',
+                                                        borderRadius: 'var(--radius-sm)',
+                                                        fontSize: '0.8rem',
+                                                        width: '140px',
+                                                        outline: 'none'
+                                                    }}
+                                                    autoFocus
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') handleRename(row.id);
+                                                        if (e.key === 'Escape') setEditingId(null);
+                                                    }}
+                                                />
+                                                <button
+                                                    onClick={() => handleRename(row.id)}
+                                                    disabled={renamingId === row.id}
+                                                    title="Guardar nombre"
+                                                    style={{
+                                                        padding: '0.25rem',
+                                                        backgroundColor: 'var(--primary)',
+                                                        color: 'var(--surface)',
+                                                        border: 'none',
+                                                        borderRadius: 'var(--radius-sm)',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    {renamingId === row.id ? (
+                                                        <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                                                    ) : (
+                                                        <Check size={14} />
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() => setEditingId(null)}
+                                                    disabled={renamingId === row.id}
+                                                    title="Cancelar"
+                                                    style={{
+                                                        padding: '0.25rem',
+                                                        backgroundColor: 'transparent',
+                                                        color: 'var(--text-secondary)',
+                                                        border: '1px solid var(--border)',
+                                                        borderRadius: 'var(--radius-sm)',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center'
+                                                    }}
+                                                >
+                                                    <X size={14} />
+                                                </button>
+                                                <style>{`
+                                                    @keyframes spin {
+                                                        to { transform: rotate(360deg); }
+                                                    }
+                                                `}</style>
+                                            </td>
+                                        ) : (
+                                            <td style={{ fontWeight: 500, fontSize: '0.8rem', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.name}>{row.name}</td>
+                                        )}
                                         <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{row.date}</td>
                                         <td>
                                             <span className={`${styles.statusBadge} ${styles[row.status]}`}>
@@ -256,6 +407,16 @@ export function DashboardView({ company }: DashboardViewProps) {
                                         <td className={styles.actionsCell}>
                                             <button className={styles.actionBtn} title="Ver / Editar Documento" onClick={() => router.push(`/editor/${row.id}`)}>
                                                 <Eye size={16} /> Ver PDF
+                                            </button>
+                                            <button 
+                                                className={styles.actionBtn} 
+                                                title="Renombrar Reporte" 
+                                                onClick={() => {
+                                                    setTempName(row.name.replace(/\.[^/.]+$/, ""));
+                                                    setEditingId(row.id);
+                                                }}
+                                            >
+                                                <Edit size={16} />
                                             </button>
                                             <button className={styles.deleteBtn} title="Eliminar Reporte" onClick={() => handleDelete(row.id)}>
                                                 <Trash2 size={18} />
