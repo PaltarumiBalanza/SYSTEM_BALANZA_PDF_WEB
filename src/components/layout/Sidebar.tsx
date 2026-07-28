@@ -11,10 +11,10 @@ import { supabase } from '@/lib/supabaseClient';
 
 export function Sidebar({ isOpen }: { isOpen: boolean }) {
     const pathname = usePathname();
-    const [isAdmin, setIsAdmin] = useState(false);
+    const [role, setRole] = useState<string | null>(null);
 
     useEffect(() => {
-        const checkAdminRole = async () => {
+        const checkUserRole = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
@@ -24,23 +24,25 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
                         .eq('user_id', user.id)
                         .single() as any;
                     
-                    if (data?.roles?.name === 'ADMIN') {
-                        setIsAdmin(true);
+                    if (data?.roles?.name) {
+                        setRole(data.roles.name);
                     }
                 }
             } catch (err) {
-                console.error('Error checking admin role in sidebar:', err);
+                console.error('Error checking user role in sidebar:', err);
             }
         };
-        checkAdminRole();
+        checkUserRole();
     }, []);
 
     const links = [
         { href: '/dashboard', label: 'PSAC', icon: FileText },
         { href: '/dashboard/ecogold', label: 'ECOGOLD', icon: Building },
         { href: '/dashboard/customers', label: 'Customers', icon: Briefcase },
-        ...(isAdmin ? [
-            { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck },
+        ...(role === 'ADMIN' || role === 'EDITOR' ? [
+            { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck }
+        ] : []),
+        ...(role === 'ADMIN' ? [
             { href: '/dashboard/users', label: 'Usuarios', icon: Users }
         ] : []),
         { href: '/dashboard/settings', label: 'Configuración', icon: Settings },
