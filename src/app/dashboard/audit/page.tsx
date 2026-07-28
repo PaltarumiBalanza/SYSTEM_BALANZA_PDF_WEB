@@ -213,19 +213,31 @@ export default function AuditPage() {
                 const batch = selected.slice(i, i + batchSize);
                 await Promise.all(batch.map(async (doc) => {
                     try {
-                        let url = doc.file_link;
-                        if (!url) return;
+                        let bucket = 'raw-reports';
+                        let path = doc.file_link;
 
-                        if (!url.startsWith('http')) {
-                            const { data: publicUrlData } = supabase.storage
-                                .from('raw-reports')
-                                .getPublicUrl(doc.file_link);
-                            url = publicUrlData.publicUrl;
+                        if (doc.status === 'HECHO') {
+                            bucket = 'final-reports';
+                            if (doc.file_link && doc.file_link.startsWith('http')) {
+                                const parts = doc.file_link.split('/');
+                                path = parts[parts.length - 1];
+                            }
                         }
 
-                        const res = await fetch(url);
-                        if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-                        const arrayBuffer = await res.arrayBuffer();
+                        if (!path) {
+                            console.warn(`Documento ID ${doc.id} no tiene file_link válido.`);
+                            return;
+                        }
+
+                        // Descargar usando el SDK de Supabase que incluye auth de manera nativa
+                        const { data: fileData, error: fileError } = await supabase.storage
+                            .from(bucket)
+                            .download(path);
+
+                        if (fileError) throw fileError;
+                        if (!fileData) throw new Error('No se recibieron datos del archivo.');
+
+                        const arrayBuffer = await fileData.arrayBuffer();
 
                         let filename = doc.name;
                         if (!filename.toLowerCase().endsWith('.pdf')) {
