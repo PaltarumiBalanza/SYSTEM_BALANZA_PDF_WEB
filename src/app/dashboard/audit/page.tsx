@@ -7,6 +7,7 @@ import styles from '../dashboard.module.css';
 import { Tabs } from '@/components/ui/Tabs';
 import { supabase } from '@/lib/supabaseClient';
 import JSZip from 'jszip';
+import { Modal } from '@/components/ui/Modal';
 
 export default function AuditPage() {
     const router = useRouter();
@@ -34,6 +35,12 @@ export default function AuditPage() {
     const [metricsUsers, setMetricsUsers] = useState<any[]>([]);
     const [metricsDocs, setMetricsDocs] = useState<any[]>([]);
     const [metricsLoading, setMetricsLoading] = useState(false);
+
+    // Filtros de fecha y modal de detalle para Métricas
+    const [metricsStartDate, setMetricsStartDate] = useState('');
+    const [metricsEndDate, setMetricsEndDate] = useState('');
+    const [selectedMetricsUser, setSelectedMetricsUser] = useState<any | null>(null);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
 
     const fetchAuditLogs = async () => {
         setLoading(true);
@@ -156,7 +163,7 @@ export default function AuditPage() {
 
             const { data: docsData, error: docsError } = await supabase
                 .from('documents')
-                .select('id, user_id, encargado_cierre, status, company, region');
+                .select('id, user_id, encargado_cierre, status, company, region, name, creation_date');
 
             if (docsError) throw docsError;
 
@@ -492,17 +499,26 @@ export default function AuditPage() {
             );
         }
 
-        const total = metricsDocs.length;
-        const pending = metricsDocs.filter(d => d.status === 'PENDIENTE').length;
-        const closed = metricsDocs.filter(d => d.status === 'CERRADO' || d.status === 'CERRADO POR BALANZA').length;
-        const success = metricsDocs.filter(d => d.status === 'HECHO').length;
-        const error = metricsDocs.filter(d => d.status === 'ERROR').length;
+        // Filtrar documentos por rango de fechas
+        const filteredDocs = metricsDocs.filter(d => {
+            if (!d.creation_date) return true;
+            const docDate = d.creation_date.split('T')[0];
+            if (metricsStartDate && docDate < metricsStartDate) return false;
+            if (metricsEndDate && docDate > metricsEndDate) return false;
+            return true;
+        });
 
-        const psacCount = metricsDocs.filter(d => d.company === 'PSAC').length;
-        const ecogoldCount = metricsDocs.filter(d => d.company === 'ECOGOLD').length;
+        const total = filteredDocs.length;
+        const pending = filteredDocs.filter(d => d.status === 'PENDIENTE').length;
+        const closed = filteredDocs.filter(d => d.status === 'CERRADO' || d.status === 'CERRADO POR BALANZA').length;
+        const success = filteredDocs.filter(d => d.status === 'HECHO').length;
+        const error = filteredDocs.filter(d => d.status === 'ERROR').length;
+
+        const psacCount = filteredDocs.filter(d => d.company === 'PSAC').length;
+        const ecogoldCount = filteredDocs.filter(d => d.company === 'ECOGOLD').length;
 
         const regionMap: Record<string, number> = {};
-        metricsDocs.forEach(d => {
+        filteredDocs.forEach(d => {
             const reg = d.region || 'General';
             regionMap[reg] = (regionMap[reg] || 0) + 1;
         });
@@ -515,8 +531,8 @@ export default function AuditPage() {
             const rawRole = user.user_roles?.[0]?.roles?.name || 'VIEWER';
             const roleName = rawRole === 'ADMIN' ? 'Administrador' : rawRole === 'EDITOR' ? 'Supervisor' : 'Operador';
             
-            const created = metricsDocs.filter(d => d.user_id === user.id).length;
-            const closed = metricsDocs.filter(d => d.encargado_cierre === user.id).length;
+            const created = filteredDocs.filter(d => d.user_id === user.id).length;
+            const closed = filteredDocs.filter(d => d.encargado_cierre === user.id).length;
 
             return {
                 id: user.id,
@@ -530,6 +546,55 @@ export default function AuditPage() {
 
         return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                {/* Filtro de Fechas */}
+                <div className={styles.tableToolbar} style={{ padding: '1rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', backgroundColor: 'var(--surface)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <BarChart3 size={20} color="var(--primary)" />
+                        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Rango de Fechas para Métricas</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Desde:</label>
+                            <input 
+                                type="date" 
+                                value={metricsStartDate} 
+                                onChange={(e) => setMetricsStartDate(e.target.value)}
+                                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem' }}
+                            />
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Hasta:</label>
+                            <input 
+                                type="date" 
+                                value={metricsEndDate} 
+                                onChange={(e) => setMetricsEndDate(e.target.value)}
+                                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem' }}
+                            />
+                        </div>
+                        {(metricsStartDate || metricsEndDate) && (
+                            <button 
+                                onClick={() => {
+                                    setMetricsStartDate('');
+                                    setMetricsEndDate('');
+                                }}
+                                style={{
+                                    backgroundColor: 'transparent',
+                                    color: 'var(--text-secondary)',
+                                    border: '1px solid var(--border)',
+                                    padding: '0.4rem 0.8rem',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 600
+                                }}
+                            >
+                                Limpiar
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                {/* KPIs Cards */}
                 <div className={styles.statsGrid}>
                     <div className={styles.statCard}>
                         <div className={`${styles.statIcon}`} style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-primary)' }}>
@@ -591,6 +656,7 @@ export default function AuditPage() {
                                         <th>Rol</th>
                                         <th style={{ textAlign: 'center' }}>Reportes Subidos</th>
                                         <th style={{ textAlign: 'center' }}>Reportes Firmados (Cierre)</th>
+                                        <th style={{ textAlign: 'center' }}>Detalles</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -614,6 +680,20 @@ export default function AuditPage() {
                                             </td>
                                             <td style={{ textAlign: 'center', fontWeight: 600 }}>{u.created}</td>
                                             <td style={{ textAlign: 'center', fontWeight: 700, color: u.closed > 0 ? 'var(--status-success)' : 'inherit' }}>{u.closed}</td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <button
+                                                    onClick={() => {
+                                                        setSelectedMetricsUser(u);
+                                                        setShowDetailsModal(true);
+                                                    }}
+                                                    className={styles.traceBtn}
+                                                    title="Ver Detalles"
+                                                    style={{ padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
+                                                >
+                                                    <Search size={14} />
+                                                    <span>Ver</span>
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -652,33 +732,151 @@ export default function AuditPage() {
                             <div className={styles.tableToolbar}>
                                 <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Distribución por Región</h2>
                             </div>
-                            <div className={styles.tableWrapper}>
-                                <table className={styles.table}>
+                            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                <div className={styles.tableWrapper} style={{ border: 'none', padding: 0 }}>
+                                    <table className={styles.table}>
+                                        <thead>
+                                            <tr>
+                                                <th>Región</th>
+                                                <th style={{ textAlign: 'right' }}>Cantidad</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sortedRegions.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No hay datos de regiones.</td>
+                                                </tr>
+                                            ) : (
+                                                sortedRegions.map(r => (
+                                                    <tr key={r.name}>
+                                                        <td style={{ fontWeight: 500 }}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', color: 'var(--primary)' }} /> {r.name}</td>
+                                                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{r.count}</td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const MetricsUserDetailsModal = () => {
+        if (!selectedMetricsUser) return null;
+
+        const uploadedDocs = metricsDocs.filter(d => d.user_id === selectedMetricsUser.id).filter(d => {
+            if (!d.creation_date) return true;
+            const docDate = d.creation_date.split('T')[0];
+            if (metricsStartDate && docDate < metricsStartDate) return false;
+            if (metricsEndDate && docDate > metricsEndDate) return false;
+            return true;
+        });
+
+        const signedDocs = metricsDocs.filter(d => d.encargado_cierre === selectedMetricsUser.id).filter(d => {
+            if (!d.creation_date) return true;
+            const docDate = d.creation_date.split('T')[0];
+            if (metricsStartDate && docDate < metricsStartDate) return false;
+            if (metricsEndDate && docDate > metricsEndDate) return false;
+            return true;
+        });
+
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', minWidth: '400px', maxWidth: '600px', padding: '0.5rem 0' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', borderBottom: '1px solid var(--border)', paddingBottom: '0.75rem' }}>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Correo Electrónico: <code>{selectedMetricsUser.email}</code></span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Rol del Sistema: <strong>{selectedMetricsUser.role}</strong></span>
+                </div>
+                
+                <Tabs tabs={[
+                    { 
+                        id: 'uploaded', 
+                        label: `Subidos (${uploadedDocs.length})`, 
+                        content: (
+                            <div className={styles.tableWrapper} style={{ maxHeight: '300px', overflowY: 'auto', marginTop: '0.5rem' }}>
+                                <table className={styles.table} style={{ fontSize: '0.8rem' }}>
                                     <thead>
                                         <tr>
-                                            <th>Región</th>
-                                            <th style={{ textAlign: 'right' }}>Cantidad</th>
+                                            <th>ID</th>
+                                            <th>Reporte</th>
+                                            <th>Empresa</th>
+                                            <th>Estado</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {sortedRegions.length === 0 ? (
+                                        {uploadedDocs.length === 0 ? (
                                             <tr>
-                                                <td colSpan={2} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>No hay datos de regiones.</td>
+                                                <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No hay reportes subidos en este rango.</td>
                                             </tr>
                                         ) : (
-                                            sortedRegions.map(r => (
-                                                <tr key={r.name}>
-                                                    <td style={{ fontWeight: 500 }}><MapPin size={14} style={{ display: 'inline', marginRight: '6px', color: 'var(--primary)' }} /> {r.name}</td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{r.count}</td>
+                                            uploadedDocs.map(doc => (
+                                                <tr key={doc.id}>
+                                                    <td>#{doc.id}</td>
+                                                    <td style={{ fontWeight: 600 }}>
+                                                        <a href={`/editor/${doc.id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                                                            {doc.name}
+                                                        </a>
+                                                    </td>
+                                                    <td>{doc.company}</td>
+                                                    <td>
+                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO' ? 'closed' : 'error']}`}>
+                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : doc.status === 'CERRADO' ? 'Cerrado Balanza' : 'Error'}
+                                                        </span>
+                                                    </td>
                                                 </tr>
                                             ))
                                         )}
                                     </tbody>
                                 </table>
                             </div>
-                        </div>
-                    </div>
-                </div>
+                        )
+                    },
+                    { 
+                        id: 'signed', 
+                        label: `Firmados (${signedDocs.length})`, 
+                        content: (
+                            <div className={styles.tableWrapper} style={{ maxHeight: '300px', overflowY: 'auto', marginTop: '0.5rem' }}>
+                                <table className={styles.table} style={{ fontSize: '0.8rem' }}>
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Reporte</th>
+                                            <th>Empresa</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {signedDocs.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No hay reportes firmados en este rango.</td>
+                                            </tr>
+                                        ) : (
+                                            signedDocs.map(doc => (
+                                                <tr key={doc.id}>
+                                                    <td>#{doc.id}</td>
+                                                    <td style={{ fontWeight: 600 }}>
+                                                        <a href={`/editor/${doc.id}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                                                            {doc.name}
+                                                        </a>
+                                                    </td>
+                                                    <td>{doc.company}</td>
+                                                    <td>
+                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO' ? 'closed' : 'error']}`}>
+                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : doc.status === 'CERRADO' ? 'Cerrado Balanza' : 'Error'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )
+                    }
+                ]} />
             </div>
         );
     };
@@ -967,6 +1165,18 @@ export default function AuditPage() {
                     { id: 'metricas', label: 'Métricas de Control', content: <MetricsDashboardView /> }
                 ]} />
             )}
+
+            <Modal 
+                isOpen={showDetailsModal} 
+                onClose={() => {
+                    setShowDetailsModal(false);
+                    setSelectedMetricsUser(null);
+                }}
+                title={`Detalles de Actividad - ${selectedMetricsUser?.name || ''}`}
+                icon={<User size={20} color="var(--primary)" />}
+            >
+                <MetricsUserDetailsModal />
+            </Modal>
         </div>
     );
 }
