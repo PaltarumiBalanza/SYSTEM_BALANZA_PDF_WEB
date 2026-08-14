@@ -41,6 +41,7 @@ export default function AuditPage() {
     const [metricsEndDate, setMetricsEndDate] = useState('');
     const [selectedMetricsUser, setSelectedMetricsUser] = useState<any | null>(null);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [currentUserRole, setCurrentUserRole] = useState<string>('');
 
     const fetchAuditLogs = async () => {
         setLoading(true);
@@ -53,7 +54,9 @@ export default function AuditPage() {
                     modification_date,
                     document_id,
                     documents (
-                        name
+                        name,
+                        status,
+                        file_link
                     ),
                     users (
                         first_name,
@@ -84,7 +87,9 @@ export default function AuditPage() {
                     action: friendlyAction,
                     module: t.action === 'CREATE' ? 'Carga' : t.action === 'CLOSE' ? 'Firma' : 'Editor',
                     date: new Date(t.modification_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
-                    ip: t.users?.email || 'N/A'
+                    ip: t.users?.email || 'N/A',
+                    docId: t.document_id,
+                    docName: t.documents?.name || 'Reporte Eliminado'
                 };
             });
 
@@ -106,7 +111,9 @@ export default function AuditPage() {
                     name: t.documents?.name || 'Reporte Eliminado',
                     action: friendlyAction,
                     user: userFull,
-                    date: new Date(t.modification_date).toLocaleString('es-PE', { timeZone: 'America/Lima' })
+                    date: new Date(t.modification_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
+                    status: t.documents?.status || 'ELIMINADO',
+                    fileLink: t.documents?.file_link || ''
                 };
             });
 
@@ -380,7 +387,7 @@ export default function AuditPage() {
                             >
                                 <option value="ALL">Todos los Estados</option>
                                 <option value="PENDIENTE">Pendientes</option>
-                                <option value="CERRADO">Cerrados Balanza</option>
+                                <option value="CERRADO POR BALANZA">Cerrados Balanza</option>
                                 <option value="HECHO">Completados (Firmados)</option>
                                 <option value="ERROR">Con Errores</option>
                             </select>
@@ -472,8 +479,8 @@ export default function AuditPage() {
                                                 </span>
                                             </td>
                                             <td>
-                                                <span className={`${styles.statusBadge} ${styles[row.status === 'PENDIENTE' ? 'pending' : row.status === 'HECHO' ? 'success' : row.status === 'CERRADO' ? 'closed' : 'error']}`}>
-                                                    {row.status === 'PENDIENTE' ? 'Pendiente' : row.status === 'HECHO' ? 'Hecho' : row.status === 'CERRADO' ? 'Cerrado Balanza' : 'Error'}
+                                                <span className={`${styles.statusBadge} ${styles[row.status === 'PENDIENTE' ? 'pending' : row.status === 'HECHO' ? 'success' : (row.status === 'CERRADO' || row.status === 'CERRADO POR BALANZA') ? 'closed' : 'error']}`}>
+                                                    {row.status === 'PENDIENTE' ? 'Pendiente' : row.status === 'HECHO' ? 'Hecho' : (row.status === 'CERRADO' || row.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : 'Error'}
                                                 </span>
                                             </td>
                                             <td>{row.region || 'General'}</td>
@@ -822,8 +829,8 @@ export default function AuditPage() {
                                                     </td>
                                                     <td>{doc.company}</td>
                                                     <td>
-                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO' ? 'closed' : 'error']}`}>
-                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : doc.status === 'CERRADO' ? 'Cerrado Balanza' : 'Error'}
+                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : 'error']}`}>
+                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : 'Error'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -864,8 +871,8 @@ export default function AuditPage() {
                                                     </td>
                                                     <td>{doc.company}</td>
                                                     <td>
-                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO' ? 'closed' : 'error']}`}>
-                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : doc.status === 'CERRADO' ? 'Cerrado Balanza' : 'Error'}
+                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : 'error']}`}>
+                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : 'Error'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -898,6 +905,7 @@ export default function AuditPage() {
 
                 if (!error && (data?.roles?.name === 'ADMIN' || data?.roles?.name === 'EDITOR')) {
                     setIsAuthorized(true);
+                    setCurrentUserRole(data.roles.name);
                     await fetchAuditLogs();
                     await fetchBulkDocs();
                     await fetchMetricsData();
@@ -957,7 +965,12 @@ export default function AuditPage() {
             if (error) throw error;
             if (!data || data.length === 0) return;
 
+            let downloadedAny = false;
             for (const doc of data) {
+                if (currentUserRole === 'EDITOR' && doc.status !== 'CERRADO' && doc.status !== 'CERRADO POR BALANZA') {
+                    console.warn(`Descarga bloqueada para el reporte #${doc.id} por no estar en estado Cerrado por Balanza.`);
+                    continue;
+                }
                 if (!doc.file_link) continue;
                 let url = doc.file_link;
 
@@ -969,6 +982,11 @@ export default function AuditPage() {
                 }
 
                 window.open(url, '_blank');
+                downloadedAny = true;
+            }
+
+            if (!downloadedAny && currentUserRole === 'EDITOR') {
+                alert('No se descargaron archivos. El rol Comercial solo tiene autorización para descargar reportes en estado "Cerrado por balanza".');
             }
         } catch (err: any) {
             alert('Error al descargar la selección: ' + err.message);
@@ -1048,6 +1066,7 @@ export default function AuditPage() {
                             <th>Usuario</th>
                             <th>Acción</th>
                             <th>Módulo</th>
+                            <th>Reporte Afectado</th>
                             <th>Fecha/Hora</th>
                             <th>Identificador / Email</th>
                         </tr>
@@ -1055,7 +1074,7 @@ export default function AuditPage() {
                     <tbody>
                         {filteredUsers.length === 0 ? (
                             <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
                                     No se encontraron registros de usuarios.
                                 </td>
                             </tr>
@@ -1065,6 +1084,15 @@ export default function AuditPage() {
                                     <td style={{ fontWeight: 500 }}><User size={14} style={{ display: 'inline', marginRight: '8px' }} /> {row.user}</td>
                                     <td>{row.action}</td>
                                     <td>{row.module}</td>
+                                    <td style={{ fontSize: '0.825rem', fontWeight: 600 }}>
+                                        {row.docId ? (
+                                            <a href={`/editor/${row.docId}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                                                #{row.docId} - {row.docName}
+                                            </a>
+                                        ) : (
+                                            'N/A'
+                                        )}
+                                    </td>
                                     <td>{row.date}</td>
                                     <td><code>{row.ip}</code></td>
                                 </tr>
@@ -1076,70 +1104,76 @@ export default function AuditPage() {
         </div>
     );
 
-    const DocTraceView = () => (
-        <div className={styles.tableSection}>
-            <div className={styles.tableToolbar}>
-                <div className={styles.searchBox}>
-                    <Search size={18} color="var(--text-secondary)" />
-                    <input 
-                        type="text" 
-                        placeholder="Buscar trazabilidad de documento..." 
-                        value={searchDoc}
-                        onChange={(e) => setSearchDoc(e.target.value)}
-                    />
-                </div>
-                <div className={styles.filterGroup}>
-                    {selectedDocs.length > 0 && (
-                        <button className={styles.actionBtn} style={{ backgroundColor: 'var(--primary)', color: 'white' }} onClick={handleDownloadSelection}>
-                            <Download size={16} /> Descargar Selección ({selectedDocs.length})
-                        </button>
-                    )}
-                    <button className={styles.actionBtn} onClick={() => exportToCSV(filteredDocs, 'Auditoria_Documentos')}>
-                        <FileSpreadsheet size={16} /> Exportar CSV
-                    </button>
-                </div>
-            </div>
-            <div className={styles.tableWrapper}>
-                <table className={styles.table}>
-                    <thead>
-                        <tr>
-                            <th style={{ width: '40px' }}></th>
-                            <th>Documento</th>
-                            <th>Evento</th>
-                            <th>Responsable</th>
-                            <th>Fecha/Hora</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredDocs.length === 0 ? (
-                            <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                    No se encontraron registros de documentos.
-                                </td>
-                            </tr>
-                        ) : (
-                            filteredDocs.map(row => (
-                                <tr key={row.id}>
-                                    <td>
-                                        <button 
-                                            onClick={() => toggleDocSelection(row.id)}
-                                            style={{ background: 'none', border: 'none', color: selectedDocs.includes(row.id) ? 'var(--primary)' : 'var(--text-secondary)', cursor: 'pointer' }}
-                                        >
-                                            {selectedDocs.includes(row.id) ? <CheckSquare size={20} /> : <Square size={20} />}
-                                        </button>
-                                    </td>
-                                    <td style={{ fontWeight: 500 }}>#{row.id} - {row.name}</td>
-                                    <td>{row.action}</td>
-                                    <td>{row.user}</td>
-                                    <td>{row.date}</td>
-                                </tr>
-                            ))
+    const DocTraceView = () => {
+        const displayDocs = currentUserRole === 'EDITOR'
+            ? filteredDocs.filter(d => d.status === 'CERRADO' || d.status === 'CERRADO POR BALANZA')
+            : filteredDocs;
+
+        return (
+            <div className={styles.tableSection}>
+                <div className={styles.tableToolbar}>
+                    <div className={styles.searchBox}>
+                        <Search size={18} color="var(--text-secondary)" />
+                        <input 
+                            type="text" 
+                            placeholder="Buscar trazabilidad de documento..." 
+                            value={searchDoc}
+                            onChange={(e) => setSearchDoc(e.target.value)}
+                        />
+                    </div>
+                    <div className={styles.filterGroup}>
+                        {selectedDocs.length > 0 && (
+                            <button className={styles.actionBtn} style={{ backgroundColor: 'var(--primary)', color: 'white' }} onClick={handleDownloadSelection}>
+                                <Download size={16} /> Descargar Selección ({selectedDocs.length})
+                            </button>
                         )}
-                    </tbody>
-                </table>
+                        <button className={styles.actionBtn} onClick={() => exportToCSV(displayDocs, 'Auditoria_Documentos')}>
+                            <FileSpreadsheet size={16} /> Exportar CSV
+                        </button>
+                    </div>
+                </div>
+                <div className={styles.tableWrapper}>
+                    <table className={styles.table}>
+                        <thead>
+                            <tr>
+                                <th style={{ width: '40px' }}></th>
+                                <th>Documento</th>
+                                <th>Evento</th>
+                                <th>Responsable</th>
+                                <th>Fecha/Hora</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {displayDocs.length === 0 ? (
+                                <tr>
+                                    <td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                        No se encontraron registros de documentos.
+                                    </td>
+                                </tr>
+                            ) : (
+                                displayDocs.map(row => (
+                                    <tr key={row.id}>
+                                        <td>
+                                            <button 
+                                                onClick={() => toggleDocSelection(row.id)}
+                                                style={{ background: 'none', border: 'none', color: selectedDocs.includes(row.id) ? 'var(--primary)' : 'var(--text-secondary)', cursor: 'pointer' }}
+                                            >
+                                                {selectedDocs.includes(row.id) ? <CheckSquare size={20} /> : <Square size={20} />}
+                                            </button>
+                                        </td>
+                                        <td style={{ fontWeight: 500 }}>#{row.id} - {row.name}</td>
+                                        <td>{row.action}</td>
+                                        <td>{row.user}</td>
+                                        <td>{row.date}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <div className={styles.container}>
@@ -1158,12 +1192,16 @@ export default function AuditPage() {
                     `}</style>
                 </div>
             ) : (
-                <Tabs tabs={[
-                    { id: 'users', label: 'Trazabilidad de Usuarios', content: <UserTraceView /> },
-                    { id: 'docs', label: 'Trazabilidad de Documentos', content: <DocTraceView /> },
-                    { id: 'descargas', label: 'Descarga Masiva', content: <BulkDownloadView /> },
-                    { id: 'metricas', label: 'Métricas de Control', content: <MetricsDashboardView /> }
-                ]} />
+                <Tabs tabs={
+                    currentUserRole === 'EDITOR' ? [
+                        { id: 'docs', label: 'Aprobación Final (Cerrado por balanza)', content: DocTraceView() }
+                    ] : [
+                        { id: 'users', label: 'Trazabilidad de Usuarios', content: UserTraceView() },
+                        { id: 'docs', label: 'Trazabilidad de Documentos', content: DocTraceView() },
+                        { id: 'descargas', label: 'Descarga Masiva', content: BulkDownloadView() },
+                        { id: 'metricas', label: 'Métricas de Control', content: MetricsDashboardView() }
+                    ]
+                } />
             )}
 
             <Modal 
@@ -1175,7 +1213,7 @@ export default function AuditPage() {
                 title={`Detalles de Actividad - ${selectedMetricsUser?.name || ''}`}
                 icon={<User size={20} color="var(--primary)" />}
             >
-                <MetricsUserDetailsModal />
+                {MetricsUserDetailsModal()}
             </Modal>
         </div>
     );
