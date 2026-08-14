@@ -10,6 +10,13 @@ export default function SettingsPage() {
     const [notifications, setNotifications] = useState(true);
     const [profile, setProfile] = useState<{ firstName: string; lastName: string; role: string; email: string } | null>(null);
 
+    // Contraseña
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [updatingPassword, setUpdatingPassword] = useState(false);
+    const [passError, setPassError] = useState('');
+    const [passSuccess, setPassSuccess] = useState('');
+
     // Initialize theme from localStorage
     useEffect(() => {
         const savedTheme = localStorage.getItem('paltarumi-theme') || 'dark';
@@ -59,6 +66,38 @@ export default function SettingsPage() {
         setTheme(newTheme);
         document.documentElement.setAttribute('data-theme', newTheme);
         localStorage.setItem('paltarumi-theme', newTheme);
+    };
+
+    const handleUpdatePassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setPassError('');
+        setPassSuccess('');
+
+        if (newPassword.length < 6) {
+            setPassError('La contraseña debe tener al menos 6 caracteres.');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            setPassError('Las contraseñas no coinciden.');
+            return;
+        }
+
+        setUpdatingPassword(true);
+        try {
+            const { error } = await supabase.auth.updateUser({
+                password: newPassword
+            });
+
+            if (error) throw error;
+
+            setPassSuccess('Contraseña actualizada con éxito.');
+            setNewPassword('');
+            setConfirmPassword('');
+        } catch (err: any) {
+            setPassError(err.message || 'Error al actualizar la contraseña.');
+        } finally {
+            setUpdatingPassword(false);
+        }
     };
 
     return (
@@ -176,6 +215,99 @@ export default function SettingsPage() {
                             {profile ? profile.email : 'Cargando...'}
                         </div>
                     </div>
+                </div>
+
+                {/* Change Password Card */}
+                <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{ color: 'var(--primary)', background: 'var(--primary-light)', padding: '10px', borderRadius: '12px' }}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-key-round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                        </div>
+                        <div>
+                            <h3 style={{ fontSize: '1.125rem', fontWeight: 700 }}>Seguridad</h3>
+                            <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Actualiza tu contraseña de acceso</p>
+                        </div>
+                    </div>
+
+                    <form onSubmit={handleUpdatePassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Nueva Contraseña
+                            </label>
+                            <input 
+                                type="password" 
+                                placeholder="Mínimo 6 caracteres"
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                style={{
+                                    background: 'var(--background)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '8px',
+                                    padding: '0.6rem 0.8rem',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.875rem',
+                                    outline: 'none',
+                                    width: '100%'
+                                }}
+                                required
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                            <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Confirmar Contraseña
+                            </label>
+                            <input 
+                                type="password" 
+                                placeholder="Repite tu contraseña"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                style={{
+                                    background: 'var(--background)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: '8px',
+                                    padding: '0.6rem 0.8rem',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '0.875rem',
+                                    outline: 'none',
+                                    width: '100%'
+                                }}
+                                required
+                            />
+                        </div>
+
+                        {passError && (
+                            <div style={{ color: 'var(--status-error)', fontSize: '0.85rem', fontWeight: 500 }}>
+                                ⚠️ {passError}
+                            </div>
+                        )}
+
+                        {passSuccess && (
+                            <div style={{ color: 'var(--status-success)', fontSize: '0.85rem', fontWeight: 500 }}>
+                                ✓ {passSuccess}
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={updatingPassword || !newPassword || !confirmPassword}
+                            style={{
+                                padding: '0.65rem 1.2rem',
+                                background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: '0.875rem',
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                width: '100%',
+                                opacity: (updatingPassword || !newPassword || !confirmPassword) ? 0.6 : 1
+                            }}
+                        >
+                            {updatingPassword ? 'Actualizando...' : 'Actualizar contraseña'}
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>

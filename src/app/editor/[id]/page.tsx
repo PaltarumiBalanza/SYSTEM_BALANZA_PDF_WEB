@@ -2,7 +2,7 @@
 
 import { useState, useRef, DragEvent, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List, Edit, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List, Edit, Loader2, BookOpen } from 'lucide-react';
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
 import { ConfirmModal } from '@/components/ui/Modal';
@@ -35,7 +35,8 @@ export default function EditorPage() {
     const [docMetadata, setDocMetadata] = useState<{ name: string; status: string; creatorName: string; fileLink: string } | null>(null);
     
     // Novedades de visualización, zoom, roles y lector hoja por hoja
-    const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+    const [layoutMode, setLayoutMode] = useState<'grid' | 'list' | 'reader'>('grid');
+    const [readerZoom, setReaderZoom] = useState(100); // Zoom porcentual (80% - 250%)
     const [pageSize, setPageSize] = useState<'sm' | 'md' | 'lg'>('md');
     const [userRole, setUserRole] = useState<string>('VIEWER'); // 'ADMIN', 'EDITOR' (Comercial), 'VIEWER' (Balanza)
     const [isDraggingFiles, setIsDraggingFiles] = useState(false);
@@ -603,7 +604,16 @@ export default function EditorPage() {
     const canvasWidth = pageSize === 'sm' ? 110 : pageSize === 'md' ? 180 : 300;
     const cardWidth = pageSize === 'sm' ? '120px' : pageSize === 'md' ? '190px' : '310px';
 
-    const gridStyle = layoutMode === 'list'
+    const gridStyle = layoutMode === 'reader'
+        ? {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            alignItems: 'center',
+            gap: '1.5rem',
+            width: '100%',
+            padding: '1rem 0'
+          }
+        : layoutMode === 'list'
         ? {
             display: 'flex',
             flexDirection: 'column' as const,
@@ -776,74 +786,223 @@ export default function EditorPage() {
                         </div>
                     )}
 
-                    <div style={gridStyle}>
-                        {pages.map((p, idx) => (
-                            <div
-                                key={p.id}
-                                className={`${styles.pageCard} ${selected.includes(p.id) ? styles.selected : ''} ${dragOverId === p.id ? styles.dragOver : ''}`}
-                                style={{ width: cardWidth }}
-                                draggable
-                                onDragStart={(e) => onDragStart(e, p.id)}
-                                onDragOver={(e) => onDragOver(e, p.id)}
-                                onDrop={(e) => onDrop(e, p.id)}
-                                onDragEnd={onDragEnd}
-                                onClick={() => toggleSelect(p.id)}
-                                onDoubleClick={() => handleDoubleClickPage(idx)}
-                                title="Doble clic para ver en tamaño completo"
+                    {layoutMode === 'reader' && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '1rem',
+                            background: 'var(--surface)',
+                            borderBottom: '1px solid var(--border)',
+                            padding: '0.6rem 1rem',
+                            position: 'sticky',
+                            top: 0,
+                            zIndex: 100,
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                        }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Zoom de Lectura:
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <button 
+                                    onClick={() => setReaderZoom(prev => Math.max(80, prev - 20))}
+                                    disabled={readerZoom <= 80}
+                                    style={{
+                                        background: 'var(--background)',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--text-primary)',
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        opacity: readerZoom <= 80 ? 0.4 : 1
+                                    }}
+                                >
+                                    -
+                                </button>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '45px', textAlign: 'center' }}>
+                                    {readerZoom}%
+                                </span>
+                                <button 
+                                    onClick={() => setReaderZoom(prev => Math.min(240, prev + 20))}
+                                    disabled={readerZoom >= 240}
+                                    style={{
+                                        background: 'var(--background)',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--text-primary)',
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '4px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        fontWeight: 'bold',
+                                        opacity: readerZoom >= 240 ? 0.4 : 1
+                                    }}
+                                >
+                                    +
+                                </button>
+                            </div>
+                            <button
+                                onClick={() => setReaderZoom(100)}
+                                style={{
+                                    background: 'transparent',
+                                    border: '1px solid var(--border)',
+                                    color: 'var(--text-secondary)',
+                                    padding: '0.2rem 0.5rem',
+                                    borderRadius: '4px',
+                                    fontSize: '0.7rem',
+                                    cursor: 'pointer'
+                                }}
                             >
-                                {/* Page number badge */}
-                                <div className={styles.pageNumber}>{idx + 1}</div>
+                                Restablecer
+                            </button>
+                        </div>
+                    )}
 
-                                {/* Drag handle */}
-                                <div className={styles.dragHandle}>
-                                    <GripVertical size={18} />
-                                </div>
+                    {layoutMode === 'reader' ? (
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '2rem',
+                            width: '100%',
+                            padding: '1.5rem 0'
+                        }}>
+                            {pages.map((p, idx) => {
+                                const readerWidth = 720 * (readerZoom / 100);
+                                return (
+                                    <div
+                                        key={p.id}
+                                        style={{
+                                            background: 'white',
+                                            padding: '1.25rem',
+                                            borderRadius: '8px',
+                                            border: '1px solid var(--border)',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            width: `${readerWidth}px`,
+                                            gap: '0.75rem',
+                                            position: 'relative',
+                                            flexShrink: 0
+                                        }}
+                                    >
+                                        {/* Page Number Badge */}
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '1rem',
+                                            left: '1rem',
+                                            background: '#1e293b',
+                                            color: '#f8fafc',
+                                            padding: '0.25rem 0.6rem',
+                                            borderRadius: '4px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 700,
+                                            zIndex: 10
+                                        }}>
+                                            Pág. {idx + 1}
+                                        </div>
 
-                                {/* Selection checkbox */}
-                                <input
-                                    type="checkbox"
-                                    className={styles.pageCheckbox}
-                                    checked={selected.includes(p.id)}
-                                    onChange={() => toggleSelect(p.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                />
+                                        {/* Content page */}
+                                        {p.pdfDoc ? (
+                                            <div style={{ width: '100%', display: 'flex', justifyContent: 'center', overflow: 'hidden' }}>
+                                                <PdfPageCanvas
+                                                    pdfDoc={p.pdfDoc}
+                                                    pageIndex={p.pageIndex}
+                                                    width={readerWidth}
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div style={{ height: '350px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                                                Cargando página...
+                                            </div>
+                                        )}
 
-                                {/* Actual PDF content */}
-                                {p.pdfDoc ? (
-                                    <div className={styles.canvasWrapper}>
-                                        <PdfPageCanvas
-                                            pdfDoc={p.pdfDoc}
-                                            pageIndex={p.pageIndex}
-                                            width={canvasWidth}
-                                        />
-                                    </div>
-                                ) : (
-                                    <div className={styles.pageContent}>
-                                        <div className={styles.pageLabel}>Pág. {p.pageIndex}</div>
-                                        <div className={styles.pageSource} style={{ color: '#64748b', background: 'none', fontSize: '0.7rem' }}>
-                                            Documento original
+                                        {/* Footer details */}
+                                        <div style={{ color: '#475569', fontSize: '0.75rem', fontWeight: 600, borderTop: '1px solid #e2e8f0', width: '100%', paddingTop: '0.5rem', textAlign: 'center' }}>
+                                            Hoja {idx + 1} de {pages.length} | Origen: {p.source === 'original' ? 'Reporte Original' : p.source}
                                         </div>
                                     </div>
-                                )}
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div style={gridStyle}>
+                            {pages.map((p, idx) => (
+                                <div
+                                    key={p.id}
+                                    className={`${styles.pageCard} ${selected.includes(p.id) ? styles.selected : ''} ${dragOverId === p.id ? styles.dragOver : ''}`}
+                                    style={{ width: cardWidth }}
+                                    draggable
+                                    onDragStart={(e) => onDragStart(e, p.id)}
+                                    onDragOver={(e) => onDragOver(e, p.id)}
+                                    onDrop={(e) => onDrop(e, p.id)}
+                                    onDragEnd={onDragEnd}
+                                    onClick={() => toggleSelect(p.id)}
+                                    onDoubleClick={() => handleDoubleClickPage(idx)}
+                                    title="Doble clic para ver en tamaño completo"
+                                >
+                                    {/* Page number badge */}
+                                    <div className={styles.pageNumber}>{idx + 1}</div>
 
-                                {/* Source badge for attached files */}
-                                {p.source !== 'original' && (
-                                    <div className={styles.pageSource}>
-                                        <Paperclip size={11} />
-                                        {p.source.length > 18 ? p.source.slice(0, 18) + '…' : p.source}
+                                    {/* Drag handle */}
+                                    <div className={styles.dragHandle}>
+                                        <GripVertical size={18} />
                                     </div>
-                                )}
 
-                                {/* Signature mark */}
-                                {signed && idx === 0 && (
-                                    <div className={styles.signatureMark}>
-                                        <CheckCircle size={24} />
-                                        <span>Revisado</span>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                                    {/* Selection checkbox */}
+                                    <input
+                                        type="checkbox"
+                                        className={styles.pageCheckbox}
+                                        checked={selected.includes(p.id)}
+                                        onChange={() => toggleSelect(p.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+
+                                    {/* Actual PDF content */}
+                                    {p.pdfDoc ? (
+                                        <div className={styles.canvasWrapper}>
+                                            <PdfPageCanvas
+                                                pdfDoc={p.pdfDoc}
+                                                pageIndex={p.pageIndex}
+                                                width={canvasWidth}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <div className={styles.pageContent}>
+                                            <div className={styles.pageLabel}>Pág. {p.pageIndex}</div>
+                                            <div className={styles.pageSource} style={{ color: '#64748b', background: 'none', fontSize: '0.7rem' }}>
+                                                Documento original
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Source badge for attached files */}
+                                    {p.source !== 'original' && (
+                                        <div className={styles.pageSource}>
+                                            <Paperclip size={11} />
+                                            {p.source.length > 18 ? p.source.slice(0, 18) + '…' : p.source}
+                                        </div>
+                                    )}
+
+                                    {/* Signature mark */}
+                                    {signed && idx === 0 && (
+                                        <div className={styles.signatureMark}>
+                                            <CheckCircle size={24} />
+                                            <span>Revisado</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -851,7 +1010,7 @@ export default function EditorPage() {
                 {/* Visual Options */}
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Opciones de Visualización</div>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
                         <button 
                             onClick={() => setLayoutMode('grid')}
                             style={{ 
@@ -859,17 +1018,18 @@ export default function EditorPage() {
                                 display: 'flex', 
                                 alignItems: 'center', 
                                 justifyContent: 'center', 
-                                gap: '0.5rem', 
-                                padding: '0.5rem', 
+                                gap: '0.4rem', 
+                                padding: '0.5rem 0.25rem', 
                                 border: '1px solid var(--border)', 
                                 borderRadius: '6px', 
                                 background: layoutMode === 'grid' ? 'var(--primary-light)' : 'transparent',
                                 color: layoutMode === 'grid' ? 'var(--primary)' : 'var(--text-secondary)',
                                 fontWeight: 600,
+                                fontSize: '0.8rem',
                                 cursor: 'pointer'
                             }}
                         >
-                            <LayoutGrid size={16} /> Cuadrícula
+                            <LayoutGrid size={14} /> Cuadrícula
                         </button>
                         <button 
                             onClick={() => setLayoutMode('list')}
@@ -878,17 +1038,38 @@ export default function EditorPage() {
                                 display: 'flex', 
                                 alignItems: 'center', 
                                 justifyContent: 'center', 
-                                gap: '0.5rem', 
-                                padding: '0.5rem', 
+                                gap: '0.4rem', 
+                                padding: '0.5rem 0.25rem', 
                                 border: '1px solid var(--border)', 
                                 borderRadius: '6px', 
                                 background: layoutMode === 'list' ? 'var(--primary-light)' : 'transparent',
                                 color: layoutMode === 'list' ? 'var(--primary)' : 'var(--text-secondary)',
                                 fontWeight: 600,
+                                fontSize: '0.8rem',
                                 cursor: 'pointer'
                             }}
                         >
-                            <List size={16} /> Lista
+                            <List size={14} /> Lista
+                        </button>
+                        <button 
+                            onClick={() => setLayoutMode('reader')}
+                            style={{ 
+                                flex: 1, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center', 
+                                gap: '0.4rem', 
+                                padding: '0.5rem 0.25rem', 
+                                border: '1px solid var(--border)', 
+                                borderRadius: '6px', 
+                                background: layoutMode === 'reader' ? 'var(--primary-light)' : 'transparent',
+                                color: layoutMode === 'reader' ? 'var(--primary)' : 'var(--text-secondary)',
+                                fontWeight: 600,
+                                fontSize: '0.8rem',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <BookOpen size={14} /> Lector (Adobe)
                         </button>
                     </div>
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
