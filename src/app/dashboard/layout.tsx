@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { ToastNotification } from '@/components/ui/ToastNotification';
 import styles from '@/components/layout/layout.module.css';
 
 export default function DashboardLayout({
@@ -29,7 +28,6 @@ export default function DashboardLayout({
                     {children}
                 </div>
             </main>
-            <ToastNotification />
         </div>
     );
 }

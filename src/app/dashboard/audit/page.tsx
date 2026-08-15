@@ -185,6 +185,11 @@ export default function AuditPage() {
 
     const getFilteredBulkDocs = () => {
         return bulkDocs.filter(d => {
+            // Si es rol Comercial (EDITOR), forzar que solo se muestren documentos en estado CERRADO o CERRADO POR BALANZA
+            if (currentUserRole === 'EDITOR') {
+                if (d.status !== 'CERRADO' && d.status !== 'CERRADO POR BALANZA') return false;
+            }
+
             const matchesCompany = bulkCompanyFilter === 'ALL' || d.company === bulkCompanyFilter;
             const matchesStatus = bulkStatusFilter === 'ALL' || d.status === bulkStatusFilter;
             const matchesRegion = bulkRegionFilter === 'ALL' || d.region === bulkRegionFilter;
@@ -378,20 +383,22 @@ export default function AuditPage() {
                             </select>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Estado de Reporte</label>
-                            <select 
-                                value={bulkStatusFilter} 
-                                onChange={(e) => setBulkStatusFilter(e.target.value)}
-                                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem' }}
-                            >
-                                <option value="ALL">Todos los Estados</option>
-                                <option value="PENDIENTE">Pendientes</option>
-                                <option value="CERRADO POR BALANZA">Cerrados Balanza</option>
-                                <option value="HECHO">Completados (Firmados)</option>
-                                <option value="ERROR">Con Errores</option>
-                            </select>
-                        </div>
+                        {currentUserRole !== 'EDITOR' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Estado de Reporte</label>
+                                <select 
+                                    value={bulkStatusFilter} 
+                                    onChange={(e) => setBulkStatusFilter(e.target.value)}
+                                    style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem' }}
+                                >
+                                    <option value="ALL">Todos los Estados</option>
+                                    <option value="PENDIENTE">Pendientes</option>
+                                    <option value="CERRADO POR BALANZA">Cerrados Balanza</option>
+                                    <option value="HECHO">Completados (Firmados)</option>
+                                    <option value="ERROR">Con Errores</option>
+                                </select>
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                             <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Región</label>
@@ -1194,7 +1201,7 @@ export default function AuditPage() {
             ) : (
                 <Tabs tabs={
                     currentUserRole === 'EDITOR' ? [
-                        { id: 'docs', label: 'Aprobación Final (Cerrado por balanza)', content: DocTraceView() }
+                        { id: 'descargas', label: 'Descarga Masiva', content: BulkDownloadView() }
                     ] : [
                         { id: 'users', label: 'Trazabilidad de Usuarios', content: UserTraceView() },
                         { id: 'docs', label: 'Trazabilidad de Documentos', content: DocTraceView() },
@@ -1212,6 +1219,7 @@ export default function AuditPage() {
                 }}
                 title={`Detalles de Actividad - ${selectedMetricsUser?.name || ''}`}
                 icon={<User size={20} color="var(--primary)" />}
+                size="lg"
             >
                 {MetricsUserDetailsModal()}
             </Modal>

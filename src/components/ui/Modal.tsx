@@ -11,14 +11,17 @@ interface ModalProps {
     isOpen: boolean;
     onClose: () => void;
     children: React.ReactNode;
+    size?: 'sm' | 'md' | 'lg';
 }
 
-export function Modal({ title, icon, isOpen, onClose, children }: ModalProps) {
+export function Modal({ title, icon, isOpen, onClose, children, size = 'md' }: ModalProps) {
     if (!isOpen) return null;
+
+    const modalMaxWidth = size === 'lg' ? '800px' : size === 'sm' ? '400px' : '600px';
 
     return (
         <div className={styles.backdrop} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-            <div className={styles.modal}>
+            <div className={styles.modal} style={{ maxWidth: modalMaxWidth }}>
                 <div className={styles.header}>
                     <h2>{icon} {title}</h2>
                     <button className={styles.closeBtn} onClick={onClose} title="Cerrar">
