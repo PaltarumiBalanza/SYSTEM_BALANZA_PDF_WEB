@@ -142,9 +142,21 @@ export default function EditorPage() {
                     const docMap: Record<string, any> = {};
                     await Promise.all(uniqueFiles.map(async (key) => {
                         const [bucket, path] = key.split('|');
-                        const { data: fileData, error: fileError } = await supabase.storage
+                        let { data: fileData, error: fileError } = await supabase.storage
                             .from(bucket)
                             .download(path);
+                        
+                        // Fallback de autorecuperación: si falló en raw-reports porque el archivo fue renombrado, intentar con originalPath
+                        if ((fileError || !fileData) && bucket === 'raw-reports' && originalPath && originalPath !== path) {
+                            console.warn(`Archivo de borrador no encontrado en Storage (${path}). Reintentando con file_link actual (${originalPath})...`);
+                            const retryRes = await supabase.storage
+                                .from(originalBucket)
+                                .download(originalPath);
+                            if (!retryRes.error && retryRes.data) {
+                                fileData = retryRes.data;
+                                fileError = null;
+                            }
+                        }
                         
                         if (!fileError && fileData) {
                             const buffer = await fileData.arrayBuffer();
@@ -159,13 +171,15 @@ export default function EditorPage() {
                         const key = `${op.bucket}|${op.path}`;
                         const pdfDoc = docMap[key];
                         const source = op.bucket === 'raw-reports' ? 'original' : op.path.split('-').pop() || 'anexo.pdf';
+                        // Si era raw-reports y se usó fallback, asegurar que use el path vigente
+                        const resolvedPath = (op.bucket === 'raw-reports' && originalPath) ? originalPath : op.path;
                         return {
                             id: idx + 1,
                             pageIndex: op.pageIndex,
                             source,
                             pdfDoc: pdfDoc || null,
                             bucket: op.bucket,
-                            path: op.path
+                            path: resolvedPath
                         };
                     });
                 } else {
