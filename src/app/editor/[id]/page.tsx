@@ -603,9 +603,39 @@ export default function EditorPage() {
         }
     };
 
-    const handleDownloadClick = () => {
+    const handleDownloadClick = async () => {
         if (docMetadata?.status === 'HECHO' && docMetadata?.fileLink) {
-            window.open(docMetadata.fileLink, '_blank');
+            try {
+                let path = docMetadata.fileLink;
+                if (path.startsWith('http')) {
+                    const parts = path.split('/');
+                    path = parts[parts.length - 1];
+                }
+
+                const { data: fileData, error: downloadError } = await supabase.storage
+                    .from('final-reports')
+                    .download(path);
+
+                if (downloadError || !fileData) {
+                    window.open(docMetadata.fileLink, '_blank');
+                    return;
+                }
+
+                const blobUrl = URL.createObjectURL(fileData);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                let downloadName = docMetadata.name || 'reporte_final.pdf';
+                if (!downloadName.toLowerCase().endsWith('.pdf')) {
+                    downloadName += '.pdf';
+                }
+                a.download = downloadName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(blobUrl);
+            } catch (err) {
+                window.open(docMetadata.fileLink, '_blank');
+            }
         } else {
             alert('El PDF final aún no ha sido compilado. Presione "Marcar como Finalizado" para generarlo.');
         }

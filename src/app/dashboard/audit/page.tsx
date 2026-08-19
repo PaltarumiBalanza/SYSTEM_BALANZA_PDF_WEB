@@ -224,6 +224,7 @@ export default function AuditPage() {
             const zip = new JSZip();
             let downloadedCount = 0;
             const batchSize = 5;
+            const usedNames = new Set<string>();
 
             for (let i = 0; i < selected.length; i += batchSize) {
                 const batch = selected.slice(i, i + batchSize);
@@ -255,13 +256,21 @@ export default function AuditPage() {
 
                         const arrayBuffer = await fileData.arrayBuffer();
 
-                        let filename = doc.name;
+                        let filename = doc.name || `reporte-${doc.id}.pdf`;
                         if (!filename.toLowerCase().endsWith('.pdf')) {
                             filename += '.pdf';
                         }
 
-                        const zipFilename = `${doc.id}-${filename}`;
-                        zip.file(zipFilename, arrayBuffer);
+                        // Evitar colisiones de nombres repetidos dentro del archivo ZIP
+                        let finalZipName = filename;
+                        let counter = 1;
+                        while (usedNames.has(finalZipName)) {
+                            finalZipName = filename.replace(/\.pdf$/i, ` (${counter}).pdf`);
+                            counter++;
+                        }
+                        usedNames.add(finalZipName);
+
+                        zip.file(finalZipName, arrayBuffer);
                     } catch (err) {
                         console.error(`Error descargando doc #${doc.id}:`, err);
                     } finally {
@@ -974,17 +983,47 @@ export default function AuditPage() {
                     continue;
                 }
                 if (!doc.file_link) continue;
-                let url = doc.file_link;
 
-                if (!url.startsWith('http')) {
-                    const { data: publicUrl } = supabase.storage
-                        .from('raw-reports')
-                        .getPublicUrl(doc.file_link);
-                    url = publicUrl.publicUrl;
+                try {
+                    let bucket = 'raw-reports';
+                    let path = doc.file_link;
+
+                    if (doc.status === 'HECHO') {
+                        bucket = 'final-reports';
+                        if (doc.file_link && doc.file_link.startsWith('http')) {
+                            const parts = doc.file_link.split('/');
+                            path = parts[parts.length - 1];
+                        }
+                    }
+
+                    const { data: fileData, error: downloadError } = await supabase.storage
+                        .from(bucket)
+                        .download(path);
+
+                    if (downloadError || !fileData) {
+                        // Fallback a enlace público si falla la descarga directa
+                        const { data: publicUrl } = supabase.storage
+                            .from(bucket)
+                            .getPublicUrl(path);
+                        window.open(publicUrl.publicUrl, '_blank');
+                    } else {
+                        const blobUrl = URL.createObjectURL(fileData);
+                        const a = document.createElement('a');
+                        a.href = blobUrl;
+                        let filename = doc.name || `reporte-${doc.id}.pdf`;
+                        if (!filename.toLowerCase().endsWith('.pdf')) {
+                            filename += '.pdf';
+                        }
+                        a.download = filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(blobUrl);
+                    }
+                    downloadedAny = true;
+                } catch (err) {
+                    console.error(`Error al procesar descarga de #${doc.id}:`, err);
                 }
-
-                window.open(url, '_blank');
-                downloadedAny = true;
             }
 
             if (!downloadedAny && currentUserRole === 'EDITOR') {
