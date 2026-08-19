@@ -20,11 +20,12 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { documentId, supervisorId, operations, sign } = body as {
+    const { documentId, supervisorId, operations, sign, targetStatus } = body as {
       documentId: number;
       supervisorId: number;
       operations: PageOperation[];
       sign: boolean;
+      targetStatus?: string;
     };
 
     if (!documentId || !operations || operations.length === 0) {
@@ -131,11 +132,13 @@ Deno.serve(async (req) => {
       .getPublicUrl(uploadData.path);
 
     // 6. Actualizar registro del documento en la tabla SQL
+    const finalStatus = targetStatus || "HECHO";
     const { data: docData, error: docError } = await supabase
       .from("documents")
       .update({
-        status: "HECHO",
+        status: finalStatus,
         file_link: publicUrl.publicUrl,
+        draft_operations: operations,
         encargado_cierre: supervisorId,
       })
       .eq("id", documentId)
@@ -150,7 +153,7 @@ Deno.serve(async (req) => {
     await supabase.from("audit_documents").insert({
       document_id: documentId,
       user_id: supervisorId,
-      action: "CLOSE",
+      action: finalStatus === "CERRADO POR BALANZA" ? "CLOSE_BALANZA" : "CLOSE",
     });
 
     return new Response(

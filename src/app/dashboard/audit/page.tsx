@@ -233,12 +233,12 @@ export default function AuditPage() {
                         let bucket = 'raw-reports';
                         let path = doc.file_link;
 
-                        if (doc.status === 'HECHO') {
+                        if (doc.file_link && doc.file_link.startsWith('http')) {
                             bucket = 'final-reports';
-                            if (doc.file_link && doc.file_link.startsWith('http')) {
-                                const parts = doc.file_link.split('/');
-                                path = parts[parts.length - 1];
-                            }
+                            const parts = doc.file_link.split('/');
+                            path = parts[parts.length - 1];
+                        } else if (doc.status === 'HECHO') {
+                            bucket = 'final-reports';
                         }
 
                         if (!path) {
@@ -988,12 +988,12 @@ export default function AuditPage() {
                     let bucket = 'raw-reports';
                     let path = doc.file_link;
 
-                    if (doc.status === 'HECHO') {
+                    if (doc.file_link && doc.file_link.startsWith('http')) {
                         bucket = 'final-reports';
-                        if (doc.file_link && doc.file_link.startsWith('http')) {
-                            const parts = doc.file_link.split('/');
-                            path = parts[parts.length - 1];
-                        }
+                        const parts = doc.file_link.split('/');
+                        path = parts[parts.length - 1];
+                    } else if (doc.status === 'HECHO') {
+                        bucket = 'final-reports';
                     }
 
                     const { data: fileData, error: downloadError } = await supabase.storage

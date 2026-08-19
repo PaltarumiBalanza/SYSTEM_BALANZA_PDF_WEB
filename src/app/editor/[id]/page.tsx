@@ -410,24 +410,21 @@ export default function EditorPage() {
                 pageIndex: p.pageIndex
             }));
 
-            // Actualizar status a 'CERRADO POR BALANZA' y guardar draft
-            const { error } = await supabase
-                .from('documents')
-                .update({
-                    status: 'CERRADO POR BALANZA',
-                    draft_operations: operations
-                })
-                .eq('id', Number(reportId));
-
-            if (error) throw error;
-
-            await supabase.from('audit_documents').insert({
-                document_id: Number(reportId),
-                user_id: user.id,
-                action: 'CLOSE' // Registrado como cierre de balanza
+            // Compilar el PDF físico consolidado con todas las hojas y anexos en final-reports
+            const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
+                body: {
+                    documentId: Number(reportId),
+                    supervisorId: user.id,
+                    operations,
+                    sign: signed,
+                    targetStatus: 'CERRADO POR BALANZA'
+                }
             });
 
-            alert('Reporte cerrado por Balanza exitosamente.');
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+
+            alert('Reporte compilado y cerrado por Balanza exitosamente.');
             router.push('/dashboard');
         } catch (err: any) {
             alert('Error al cerrar por Balanza: ' + err.message);
