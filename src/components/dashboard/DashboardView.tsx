@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, FileWarning, CheckCircle, AlertCircle, Eye, Trash2, History, MessageSquare, ClipboardCheck, Edit, Loader2, Check, X } from 'lucide-react';
+import { Search, FileWarning, CheckCircle, AlertCircle, Eye, Trash2, History, MessageSquare, ClipboardCheck, Edit, Loader2, Check, X, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import styles from '@/app/dashboard/dashboard.module.css';
 import { Modal, TraceabilityContent, CommentsContent } from '@/components/ui/Modal';
 import { supabase } from '@/lib/supabaseClient';
@@ -22,6 +22,20 @@ export function DashboardView({ company }: DashboardViewProps) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [tempName, setTempName] = useState('');
     const [renamingId, setRenamingId] = useState<string | null>(null);
+
+    // Estado para ordenación tipo Excel por columnas (Nombre, Fecha, Estado, Región, Creador)
+    const [sortColumn, setSortColumn] = useState<'name' | 'date' | 'status' | 'region' | 'creator' | null>(null);
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const paramFilter = params.get('filter');
+            if (paramFilter) {
+                setFilter(paramFilter);
+            }
+        }
+    }, []);
 
     const sanitizeFileName = (fileName: string): string => {
         return fileName
@@ -44,6 +58,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                     user_id,
                     region,
                     company,
+                    file_link,
                     users:users!user_id (first_name, last_name)
                 `)
                 .eq('company', company)
@@ -51,31 +66,40 @@ export function DashboardView({ company }: DashboardViewProps) {
 
             if (error) throw error;
 
-            const formatted = (data || []).map((doc: any) => ({
-                id: String(doc.id),
-                name: doc.name,
-                status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : doc.status === 'OBSERVADO' ? 'observed' : 'error',
-                region: doc.region || 'General',
-                creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
-                date: (() => {
-                    if (!doc.creation_date) return '';
+            const formatted = (data || []).map((doc: any) => {
+                let timestamp = 0;
+                let dateFormatted = '';
+                if (doc.creation_date) {
                     const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(doc.creation_date);
                     const cleanStr = doc.creation_date.includes('T') ? doc.creation_date : doc.creation_date.replace(' ', 'T');
                     const finalStr = hasTz ? cleanStr : `${cleanStr}Z`;
                     const parsed = new Date(finalStr);
-                    return isNaN(parsed.getTime()) ? '' : parsed.toLocaleString('es-PE', { 
-                        timeZone: 'America/Lima',
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
-                    });
-                })(),
-                comments: 0,
-                hasTrace: true
-            }));
+                    if (!isNaN(parsed.getTime())) {
+                        timestamp = parsed.getTime();
+                        dateFormatted = parsed.toLocaleString('es-PE', { 
+                            timeZone: 'America/Lima',
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true
+                        });
+                    }
+                }
+                return {
+                    id: String(doc.id),
+                    name: doc.name,
+                    status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : doc.status === 'OBSERVADO' ? 'observed' : 'error',
+                    region: doc.region || 'General',
+                    creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
+                    date: dateFormatted,
+                    timestamp: timestamp,
+                    comments: 0,
+                    hasTrace: true,
+                    fileLink: doc.file_link
+                };
+            });
 
             setReports(formatted);
         } catch (err) {
@@ -174,6 +198,25 @@ export function DashboardView({ company }: DashboardViewProps) {
         }
     };
 
+    const handleSort = (col: 'name' | 'date' | 'status' | 'region' | 'creator') => {
+        if (sortColumn === col) {
+            if (sortDirection === 'asc') {
+                setSortDirection('desc');
+            } else {
+                setSortColumn(null);
+                setSortDirection('asc');
+            }
+        } else {
+            setSortColumn(col);
+            setSortDirection('asc');
+        }
+    };
+
+    const handleOpenEditor = (docId: string) => {
+        const currentFrom = `${window.location.pathname}${filter !== 'all' ? `?filter=${filter}` : ''}`;
+        router.push(`/editor/${docId}?from=${encodeURIComponent(currentFrom)}`);
+    };
+
     const searchedData = reports.filter(r => {
         const query = searchQuery.toLowerCase();
         return r.id.toLowerCase().includes(query) || 
@@ -183,6 +226,40 @@ export function DashboardView({ company }: DashboardViewProps) {
     });
 
     const filteredData = filter === 'all' ? searchedData : searchedData.filter(d => d.status === filter);
+
+    const sortedAndFilteredData = [...filteredData].sort((a, b) => {
+        if (!sortColumn) return 0;
+        if (sortColumn === 'date') {
+            const valA = a.timestamp || 0;
+            const valB = b.timestamp || 0;
+            return sortDirection === 'asc' ? valA - valB : valB - valA;
+        }
+        let valA = String(a[sortColumn] || '').toLowerCase();
+        let valB = String(b[sortColumn] || '').toLowerCase();
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const renderSortHeader = (label: string, col: 'name' | 'date' | 'status' | 'region' | 'creator') => {
+        const isActive = sortColumn === col;
+        return (
+            <th 
+                onClick={() => handleSort(col)} 
+                style={{ cursor: 'pointer', userSelect: 'none' }}
+                title={`Ordenar por ${label}`}
+            >
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <span>{label}</span>
+                    {isActive ? (
+                        sortDirection === 'asc' ? <ArrowUp size={14} color="var(--primary)" /> : <ArrowDown size={14} color="var(--primary)" />
+                    ) : (
+                        <ArrowUpDown size={13} style={{ opacity: 0.4 }} />
+                    )}
+                </div>
+            </th>
+        );
+    };
 
     const pendingCount = reports.filter(r => r.status === 'pending').length;
     const closedCount = reports.filter(r => r.status === 'closed').length;
@@ -298,18 +375,18 @@ export function DashboardView({ company }: DashboardViewProps) {
                         <table className={styles.table}>
                             <thead>
                                 <tr>
-                                    <th>Nombre Documento</th>
-                                    <th>Fecha</th>
-                                    <th>Estado</th>
-                                    <th>Región</th>
-                                    <th>Creador</th>
+                                    {renderSortHeader('Nombre Documento', 'name')}
+                                    {renderSortHeader('Fecha', 'date')}
+                                    {renderSortHeader('Estado', 'status')}
+                                    {renderSortHeader('Región', 'region')}
+                                    {renderSortHeader('Creador', 'creator')}
                                     <th>Trazabilidad</th>
                                     <th>Comentarios</th>
                                     <th style={{ textAlign: 'right' }}>Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredData.map(row => (
+                                {sortedAndFilteredData.map(row => (
                                     <tr key={row.id}>
                                         {editingId === row.id ? (
                                             <td style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '1rem 0.5rem', minWidth: '220px' }}>
@@ -405,7 +482,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                                             </button>
                                         </td>
                                         <td className={styles.actionsCell}>
-                                            <button className={styles.actionBtn} title="Ver / Editar Documento" onClick={() => router.push(`/editor/${row.id}`)}>
+                                            <button className={styles.actionBtn} title="Ver / Editar Documento" onClick={() => handleOpenEditor(row.id)}>
                                                 <Eye size={16} /> Ver PDF
                                             </button>
                                             <button 

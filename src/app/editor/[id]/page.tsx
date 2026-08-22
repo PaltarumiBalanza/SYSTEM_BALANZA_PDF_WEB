@@ -20,6 +20,25 @@ interface PageItem {
 export default function EditorPage() {
     const { id } = useParams();
     const router = useRouter();
+    const [fromUrl, setFromUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            const fromParam = params.get('from');
+            if (fromParam) {
+                setFromUrl(fromParam);
+            }
+        }
+    }, []);
+
+    const goBack = () => {
+        if (fromUrl) {
+            router.push(fromUrl);
+        } else {
+            router.back();
+        }
+    };
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const reportId = Array.isArray(id) ? id[0] : id;
@@ -215,8 +234,8 @@ export default function EditorPage() {
 
                 setPages(loadedPages);
             } catch (err: any) {
-                alert('Error cargando reporte: ' + err.message);
-                router.push('/dashboard');
+                alert(err.message || 'Error cargando reporte');
+                router.push(fromUrl || '/dashboard');
             } finally {
                 setLoadingPdf(false);
             }
@@ -376,15 +395,22 @@ export default function EditorPage() {
                 });
 
                 alert('Reporte marcado como Completado exitosamente.');
-                router.push('/dashboard');
+                router.push(fromUrl || '/dashboard');
                 return;
             }
 
-            const operations = pages.map(p => ({
-                bucket: p.bucket,
-                path: p.path,
-                pageIndex: p.pageIndex
-            }));
+            const operations = pages.map(p => {
+                let cleanPath = p.path || '';
+                if (cleanPath.startsWith('http')) {
+                    const parts = cleanPath.split('/');
+                    cleanPath = parts[parts.length - 1];
+                }
+                return {
+                    bucket: p.bucket || 'raw-reports',
+                    path: cleanPath,
+                    pageIndex: p.pageIndex
+                };
+            });
 
             const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
                 body: {
@@ -399,7 +425,7 @@ export default function EditorPage() {
             if (data?.error) throw new Error(data.error);
 
             alert('Reporte marcado como Completado exitosamente.');
-            router.push('/dashboard');
+            router.push(fromUrl || '/dashboard');
         } catch (err: any) {
             alert('Error al compilar y firmar el PDF: ' + err.message);
         } finally {
@@ -429,11 +455,18 @@ export default function EditorPage() {
                 return;
             }
 
-            const operations = pages.map(p => ({
-                bucket: p.bucket,
-                path: p.path,
-                pageIndex: p.pageIndex
-            }));
+            const operations = pages.map(p => {
+                let cleanPath = p.path || '';
+                if (cleanPath.startsWith('http')) {
+                    const parts = cleanPath.split('/');
+                    cleanPath = parts[parts.length - 1];
+                }
+                return {
+                    bucket: p.bucket || 'raw-reports',
+                    path: cleanPath,
+                    pageIndex: p.pageIndex
+                };
+            });
 
             // Compilar el PDF físico consolidado con todas las hojas y anexos en final-reports
             const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
@@ -460,7 +493,7 @@ export default function EditorPage() {
             }
 
             alert('Reporte compilado y cerrado por Balanza exitosamente.');
-            router.push('/dashboard');
+            router.push(fromUrl || '/dashboard');
         } catch (err: any) {
             alert('Error al cerrar por Balanza: ' + err.message);
         } finally {
@@ -554,7 +587,7 @@ export default function EditorPage() {
             });
 
             alert('Reporte marcado con error exitosamente.');
-            router.push('/dashboard');
+            router.push(fromUrl || '/dashboard');
         } catch (err: any) {
             alert('Error al marcar reporte con error: ' + err.message);
         } finally {
@@ -596,7 +629,7 @@ export default function EditorPage() {
             });
 
             alert('Reporte marcado como Observado. El área correspondiente revisará las observaciones.');
-            router.push('/dashboard');
+            router.push(fromUrl || '/dashboard');
         } catch (err: any) {
             alert('Error al marcar reporte como Observado: ' + err.message);
         } finally {
@@ -777,7 +810,7 @@ export default function EditorPage() {
                 <div className={styles.pdfHeader}>
                     {isEditingName ? (
                         <div className={styles.headerTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
-                            <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                            <button className={styles.backBtn} onClick={goBack} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                 <ArrowLeft size={20} />
                             </button>
                             <span style={{ whiteSpace: 'nowrap' }}>Reporte: </span>
@@ -844,7 +877,7 @@ export default function EditorPage() {
                         </div>
                     ) : (
                         <div className={styles.headerTitle} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <button className={styles.backBtn} onClick={() => router.push('/dashboard')} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                            <button className={styles.backBtn} onClick={goBack} title="Volver al Dashboard" style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                 <ArrowLeft size={20} />
                             </button>
                             <span>Reporte: {docMetadata?.name || `Balanza #${reportId}`}</span>

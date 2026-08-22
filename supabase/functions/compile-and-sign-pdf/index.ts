@@ -48,13 +48,37 @@ Deno.serve(async (req) => {
 
     // 2. Reconstruir el PDF en base a las instrucciones de las páginas
     for (const op of operations) {
-      const cacheKey = `${op.bucket}/${op.path}`;
+      let cleanPath = op.path || "";
+      if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+        const parts = cleanPath.split("/");
+        cleanPath = parts[parts.length - 1];
+      }
+
+      let bucket = op.bucket || "raw-reports";
+      if (cleanPath.startsWith("signed-")) {
+        bucket = "final-reports";
+      }
+
+      const cacheKey = `${bucket}/${cleanPath}`;
       let srcDoc = pdfCache[cacheKey];
 
       if (!srcDoc) {
-        const { data, error } = await supabase.storage.from(op.bucket).download(op.path);
-        if (error) {
-          throw new Error(`Error descargando ${cacheKey} desde Storage: ${error.message}`);
+        let { data, error } = await supabase.storage.from(bucket).download(cleanPath);
+
+        // Fallback autorecuperación: si falló la descarga en el bucket primario, probar en el bucket alternativo
+        if (error || !data) {
+          const altBucket = bucket === "raw-reports" ? "final-reports" : "raw-reports";
+          console.warn(`No se encontró ${cleanPath} en "${bucket}". Intentando en "${altBucket}"...`);
+          const altRes = await supabase.storage.from(altBucket).download(cleanPath);
+          if (!altRes.error && altRes.data) {
+            data = altRes.data;
+            error = null;
+            bucket = altBucket;
+          }
+        }
+
+        if (error || !data) {
+          throw new Error(`Error descargando ${cleanPath} desde Storage (${bucket}): ${error?.message || "Archivo no encontrado"}`);
         }
         const arrayBuffer = await data.arrayBuffer();
         srcDoc = await PDFDocument.load(arrayBuffer);
