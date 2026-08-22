@@ -476,7 +476,7 @@ export default function AuditPage() {
                                                     {isSelected ? <CheckSquare size={20} /> : <Square size={20} />}
                                                 </button>
                                             </td>
-                                            <td style={{ fontWeight: 600, fontSize: '0.825rem' }}>#{row.id} - {row.name}</td>
+                                            <td style={{ fontWeight: 600, fontSize: '0.825rem' }}>{row.name}</td>
                                             <td>
                                                 <span style={{ 
                                                     padding: '0.2rem 0.5rem', 

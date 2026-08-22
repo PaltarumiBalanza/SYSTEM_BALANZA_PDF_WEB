@@ -28,7 +28,7 @@ export function DashboardView({ company }: DashboardViewProps) {
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "") // Remueve acentos
             .replace(/[ñÑ]/g, "n")
-            .replace(/[^a-zA-Z0-9.-]/g, "_"); // Reemplaza espacios y símbolos extraños por guiones bajos
+            .replace(/[^a-zA-Z0-9.\s-]/g, "_"); // Mantiene espacios y caracteres alfanuméricos válidos
     };
 
     const fetchReports = async () => {
