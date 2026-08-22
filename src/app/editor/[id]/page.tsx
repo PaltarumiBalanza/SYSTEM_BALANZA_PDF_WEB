@@ -334,10 +334,13 @@ export default function EditorPage() {
         e.target.value = '';
     };
 
+    const canEditPages = userRole !== 'EDITOR' && userRole !== 'SUPERVISOR' && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA';
+
     // ---- Drag and drop files from Windows Explorer ----
     const handleWorkspaceDragEnter = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        if (!canEditPages) return;
         if (e.dataTransfer.types.includes('Files')) {
             setIsDraggingFiles(true);
         }
@@ -358,6 +361,7 @@ export default function EditorPage() {
         e.preventDefault();
         e.stopPropagation();
         setIsDraggingFiles(false);
+        if (!canEditPages) return;
 
         const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.pdf'));
         if (files.length === 0) return;
@@ -1092,12 +1096,12 @@ export default function EditorPage() {
                                     key={p.id}
                                     className={`${styles.pageCard} ${selected.includes(p.id) ? styles.selected : ''} ${dragOverId === p.id ? styles.dragOver : ''}`}
                                     style={{ width: cardWidth }}
-                                    draggable
-                                    onDragStart={(e) => onDragStart(e, p.id)}
-                                    onDragOver={(e) => onDragOver(e, p.id)}
-                                    onDrop={(e) => onDrop(e, p.id)}
-                                    onDragEnd={onDragEnd}
-                                    onClick={() => toggleSelect(p.id)}
+                                    draggable={canEditPages}
+                                    onDragStart={(e) => canEditPages && onDragStart(e, p.id)}
+                                    onDragOver={(e) => canEditPages && onDragOver(e, p.id)}
+                                    onDrop={(e) => canEditPages && onDrop(e, p.id)}
+                                    onDragEnd={canEditPages ? onDragEnd : undefined}
+                                    onClick={() => canEditPages && toggleSelect(p.id)}
                                     onDoubleClick={() => handleDoubleClickPage(idx)}
                                     title="Doble clic para ver en tamaño completo"
                                 >
@@ -1105,18 +1109,22 @@ export default function EditorPage() {
                                     <div className={styles.pageNumber}>{idx + 1}</div>
 
                                     {/* Drag handle */}
-                                    <div className={styles.dragHandle}>
-                                        <GripVertical size={18} />
-                                    </div>
+                                    {canEditPages && (
+                                        <div className={styles.dragHandle}>
+                                            <GripVertical size={18} />
+                                        </div>
+                                    )}
 
                                     {/* Selection checkbox */}
-                                    <input
-                                        type="checkbox"
-                                        className={styles.pageCheckbox}
-                                        checked={selected.includes(p.id)}
-                                        onChange={() => toggleSelect(p.id)}
-                                        onClick={(e) => e.stopPropagation()}
-                                    />
+                                    {canEditPages && (
+                                        <input
+                                            type="checkbox"
+                                            className={styles.pageCheckbox}
+                                            checked={selected.includes(p.id)}
+                                            onChange={() => toggleSelect(p.id)}
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    )}
 
                                     {/* Actual PDF content */}
                                     {p.pdfDoc ? (
@@ -1247,20 +1255,23 @@ export default function EditorPage() {
                     </div>
                 </div>
 
-                <div className={styles.panelSection}>
-                    <div className={styles.panelTitle}>Acciones de Edición</div>
-                    <button className={styles.actionBtn} onClick={handleAttachClick} disabled={saving || docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA'} style={{ cursor: (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') ? 'not-allowed' : 'pointer', opacity: (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') ? 0.4 : 1 }}>
-                        <Paperclip size={18} /> Adjuntar PDF (Concatenar)
-                    </button>
-                    <button
-                        className={`${styles.actionBtn} ${selected.length ? styles.danger : ''}`}
-                        onClick={deleteSelected}
-                        disabled={!selected.length || saving || docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA'}
-                        style={{ cursor: 'pointer' }}
-                    >
-                        <Trash2 size={18} /> Eliminar Seleccionadas ({selected.length})
-                    </button>
-                </div>
+                {/* Acciones de Edición — visible solo para Balanza y Admin en estados editables */}
+                {userRole !== 'EDITOR' && userRole !== 'SUPERVISOR' && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                    <div className={styles.panelSection}>
+                        <div className={styles.panelTitle}>Acciones de Edición</div>
+                        <button className={styles.actionBtn} onClick={handleAttachClick} disabled={saving} style={{ cursor: 'pointer' }}>
+                            <Paperclip size={18} /> Adjuntar PDF (Concatenar)
+                        </button>
+                        <button
+                            className={`${styles.actionBtn} ${selected.length ? styles.danger : ''}`}
+                            onClick={deleteSelected}
+                            disabled={!selected.length || saving}
+                            style={{ cursor: 'pointer' }}
+                        >
+                            <Trash2 size={18} /> Eliminar Seleccionadas ({selected.length})
+                        </button>
+                    </div>
+                )}
 
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Autorización</div>
@@ -1287,16 +1298,11 @@ export default function EditorPage() {
                     {/* Acciones de Comercial / Admin */}
                     {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && docMetadata?.status !== 'HECHO' && (
                         <>
-                            {docMetadata?.status !== 'CERRADO POR BALANZA' && (
-                                <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)', cursor: 'pointer' }} disabled={saving}>
-                                    <FileSignature size={18} /> Estampar Firma de Revisado
-                                </button>
-                            )}
                             <button
                                 className={`${styles.actionBtn} ${styles.primary}`}
                                 onClick={handleSaveAndCompile}
                                 disabled={saving || pages.length === 0}
-                                style={{ cursor: 'pointer', marginTop: docMetadata?.status === 'CERRADO POR BALANZA' ? '0.5rem' : '0' }}
+                                style={{ cursor: 'pointer' }}
                             >
                                 <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Completado'}
                             </button>
