@@ -6,28 +6,30 @@ Este documento describe el flujo de operaciones (User Flow), los roles de usuari
 
 ## 1. Matriz de Roles y Responsabilidades
 
-El sistema utiliza un control de acceso basado en roles (RBAC) para delegar las operaciones de gestión de PDFs.
+El sistema utiliza un control de acceso basado en roles (RBAC) para delegar las operaciones de gestión de PDFs:
 
-| Rol | Descripción | Permisos Clave |
+| Rol DB | Área / Representante | Descripción y Permisos Clave |
 | :--- | :--- | :--- |
-| **Administrador (ADMIN)** | Gestión total del portal y configuración global. | Gestión de usuarios, visualización de logs de auditoría completa, modificación de configuraciones generales. |
-| **Supervisor de Región (EDITOR)** | Responsable del control de calidad y cierre de reportes de su zona. | Edición de PDFs (arrastrar, ordenar, eliminar, adjuntar), estampado de firma "Revisado", transición de estado a **HECHO**. |
-| **Operador / Área Comercial (VIEWER)** | Creadores originales de registros y consumidores del PDF final. | Lectura de documentos de su región, adición de comentarios/comentarios de retroalimentación, descarga del PDF final. |
+| **`ADMIN`** | **Administrador** | Gestión total del portal, auditoría completa, usuarios y configuraciones generales. |
+| **`EDITOR`** | **Área Comercial** | Acceso a Descarga Masiva (todos los estados y filtros). En el Editor: puede editar PDFs en borrador, estampar firma de revisado, marcar como **COMPLETADO** (pasa a `HECHO`), o declarar **ERROR**. Sobre documentos en `CERRADO POR BALANZA`, puede aprobarlos (**Marcar como Completado**) o rechazarlos (**Marcar como Error**). |
+| **`VIEWER`** | **Balanza** | En el Editor: compila y cierra reportes (**Cerrar por Balanza** -> estado `CERRADO POR BALANZA`) o señala problemas (**Marcar como Observado** -> estado `OBSERVADO`). No puede marcar como `ERROR` ni `COMPLETADO` en estado cerrado. |
 
 ---
 
 ## 2. Flujo del Ciclo de Vida del Reporte PDF (End-to-End)
 
-El proceso se compone de 6 etapas consecutivas que van desde la extracción física de datos en la mina hasta la inmutabilidad comercial del reporte:
+El proceso se compone de las siguientes etapas consecutivas:
 
 ```mermaid
 graph TD
-    A[1. Web Scraping & Generación de PDF] -->|Software Escritorio| B[2. Sincronización Web via API]
-    B -->|Estado: PENDIENTE| C[3. Notificación a Supervisores]
-    C --> D[4. Control de Calidad y Edición]
-    D -->|Reordenar / Adjuntar / Borrar Hojas| E[5. Autorización y Firma Visual]
-    E -->|Firma Stamp + Estado: HECHO| F[6. Documento CERRADO & Inmutable]
-    F --> G[Área Comercial Descarga PDF]
+    A[1. Software Escritorio] -->|Sincronización API| B[2. Estado: PENDIENTE]
+    B --> C{3. Revisión por Balanza}
+    C -->|Si todo correcto| D[Estado: CERRADO POR BALANZA]
+    C -->|Si hay observaciones| E[Estado: OBSERVADO]
+    D --> F{4. Revisión Comercial}
+    F -->|Aprobar| G[Estado: COMPLETADO / HECHO]
+    F -->|Rechazar| H[Estado: ERROR]
+    G --> I[5. PDF Inmutable & Descarga Masiva]
 ```
 
 ### Etapa 1: Generación y Extracción (Desktop)

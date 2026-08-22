@@ -36,16 +36,17 @@ Almacena la información de los usuarios del sistema.
 ### 2.3 Tabla: `documents`
 Almacena los metadatos de los reportes PDF.
 *   `id` (SERIAL, PK): Identificador único del reporte.
-*   `user_id` (INTEGER, FK -> `users.id`): Creador u operador que subió el reporte.
-*   `name` (VARCHAR): Nombre del archivo PDF (ej: `Balanza_LIM_Reporte_Mar_2026.pdf`).
+*   `user_id` (INTEGER / UUID, FK -> `users.id`): Creador u operador que subió el reporte.
+*   `name` (VARCHAR): Nombre del archivo PDF (conserva espacios reales, ej: `01-E6080 oro negro compania minera s.a.c.pdf`).
 *   `creation_date` (TIMESTAMP): Fecha de carga.
-*   `encargado_cierre` (INTEGER, FK -> `users.id`): Supervisor que firmó/cerró el documento.
-*   `file_link` (TEXT): Enlace al archivo físico almacenado en Supabase Storage.
+*   `encargado_cierre` (INTEGER / UUID, FK -> `users.id`): Supervisor o balanza que cerró/firmó el documento.
+*   `file_link` (TEXT): Enlace o ruta del archivo físico almacenado en Supabase Storage (`raw-reports` para borradores, `final-reports` para compilados).
 *   `status` (VARCHAR): Estado del reporte:
     *   `PENDIENTE`: Creado y en revisión.
-    *   `CERRADO`: Bloqueado por el equipo de balanza.
-    *   `HECHO`: Validado y aprobado por el área comercial (no modificable).
-    *   `ERROR`: Reporte con inconsistencias.
+    *   `CERRADO POR BALANZA`: Revisado y cerrado por el área de Balanza (listo para aprobación comercial).
+    *   `OBSERVADO`: Marcado por Balanza al detectar alguna observación pendiente de revisión.
+    *   `HECHO`: Validado, aprobado y completado por el área comercial (totalmente inmutable, solo lectura).
+    *   `ERROR`: Invalidado por falla o inconsistencia de datos.
 
 ### 2.4 Tabla: `comments`
 Comentarios y feedback dejados por los usuarios en cada reporte.
