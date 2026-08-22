@@ -429,6 +429,16 @@ export default function EditorPage() {
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
 
+            // Garantizar explícitamente en la base de datos el estado CERRADO POR BALANZA
+            const { error: statusUpdateError } = await supabase
+                .from('documents')
+                .update({ status: 'CERRADO POR BALANZA' })
+                .eq('id', Number(reportId));
+
+            if (statusUpdateError) {
+                console.error('Error al forzar estado CERRADO POR BALANZA:', statusUpdateError);
+            }
+
             alert('Reporte compilado y cerrado por Balanza exitosamente.');
             router.push('/dashboard');
         } catch (err: any) {
