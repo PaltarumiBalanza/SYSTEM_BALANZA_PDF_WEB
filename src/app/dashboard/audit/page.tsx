@@ -490,8 +490,8 @@ export default function AuditPage() {
                                                 </span>
                                             </td>
                                             <td>
-                                                <span className={`${styles.statusBadge} ${styles[row.status === 'PENDIENTE' ? 'pending' : row.status === 'HECHO' ? 'success' : (row.status === 'CERRADO' || row.status === 'CERRADO POR BALANZA') ? 'closed' : 'error']}`}>
-                                                    {row.status === 'PENDIENTE' ? 'Pendiente' : row.status === 'HECHO' ? 'Hecho' : (row.status === 'CERRADO' || row.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : 'Error'}
+                                                <span className={`${styles.statusBadge} ${styles[row.status === 'PENDIENTE' ? 'pending' : row.status === 'HECHO' ? 'success' : (row.status === 'CERRADO' || row.status === 'CERRADO POR BALANZA') ? 'closed' : row.status === 'OBSERVADO' ? 'observed' : 'error']}`}>
+                                                    {row.status === 'PENDIENTE' ? 'Pendiente' : row.status === 'HECHO' ? 'Completado' : (row.status === 'CERRADO' || row.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : row.status === 'OBSERVADO' ? 'Observado' : 'Error'}
                                                 </span>
                                             </td>
                                             <td>{row.region || 'General'}</td>
@@ -840,8 +840,8 @@ export default function AuditPage() {
                                                     </td>
                                                     <td>{doc.company}</td>
                                                     <td>
-                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : 'error']}`}>
-                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : 'Error'}
+                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : doc.status === 'OBSERVADO' ? 'observed' : 'error']}`}>
+                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Completado' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : doc.status === 'OBSERVADO' ? 'Observado' : 'Error'}
                                                         </span>
                                                     </td>
                                                 </tr>
@@ -882,8 +882,8 @@ export default function AuditPage() {
                                                     </td>
                                                     <td>{doc.company}</td>
                                                     <td>
-                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : 'error']}`}>
-                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Hecho' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : 'Error'}
+                                                        <span className={`${styles.statusBadge} ${styles[doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : doc.status === 'OBSERVADO' ? 'observed' : 'error']}`}>
+                                                            {doc.status === 'PENDIENTE' ? 'Pendiente' : doc.status === 'HECHO' ? 'Completado' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'Cerrado Balanza' : doc.status === 'OBSERVADO' ? 'Observado' : 'Error'}
                                                         </span>
                                                     </td>
                                                 </tr>

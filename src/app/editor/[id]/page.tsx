@@ -2,7 +2,7 @@
 
 import { useState, useRef, DragEvent, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List, Edit, Loader2, BookOpen } from 'lucide-react';
+import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List, Edit, Loader2, BookOpen, Eye } from 'lucide-react';
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
 import { ConfirmModal } from '@/components/ui/Modal';
@@ -119,10 +119,12 @@ export default function EditorPage() {
                     fileLink: docData.file_link
                 });
 
+                const isFinalState = docData.status === 'HECHO' || docData.status === 'CERRADO POR BALANZA';
+
                 let originalBucket = 'raw-reports';
                 let originalPath = docData.file_link;
 
-                if (docData.status === 'HECHO') {
+                if (isFinalState) {
                     originalBucket = 'final-reports';
                     if (docData.file_link && docData.file_link.startsWith('http')) {
                         const parts = docData.file_link.split('/');
@@ -135,7 +137,10 @@ export default function EditorPage() {
 
                 let loadedPages: PageItem[] = [];
 
-                if (docData.draft_operations && Array.isArray(docData.draft_operations) && docData.draft_operations.length > 0) {
+                // CORRECCIÓN CRÍTICA: Para reportes finalizados (HECHO / CERRADO POR BALANZA),
+                // cargar SIEMPRE el PDF compilado en final-reports, ignorando draft_operations.
+                // Esto evita hojas repetidas y descuadres entre lo que se ve y lo que se descarga.
+                if (!isFinalState && docData.draft_operations && Array.isArray(docData.draft_operations) && docData.draft_operations.length > 0) {
                     const draftOps = docData.draft_operations as any[];
                     const uniqueFiles = Array.from(new Set(draftOps.map(op => `${op.bucket}|${op.path}`)));
                     
@@ -537,6 +542,48 @@ export default function EditorPage() {
         });
     };
 
+    const performMarkObservado = async () => {
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                alert('No se detectó sesión activa de usuario. Inicie sesión nuevamente.');
+                router.push('/login');
+                return;
+            }
+
+            const { error } = await supabase
+                .from('documents')
+                .update({ status: 'OBSERVADO' })
+                .eq('id', Number(reportId));
+
+            if (error) throw error;
+
+            await supabase.from('audit_documents').insert({
+                document_id: Number(reportId),
+                user_id: user.id,
+                action: 'OBSERVED'
+            });
+
+            alert('Reporte marcado como Observado. El área correspondiente revisará las observaciones.');
+            router.push('/dashboard');
+        } catch (err: any) {
+            alert('Error al marcar reporte como Observado: ' + err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleMarkObservado = () => {
+        triggerConfirm({
+            title: 'Marcar como Observado',
+            message: '¿Está seguro de que desea marcar este reporte como OBSERVADO? Esto indica que existen observaciones pendientes de revisión por el área comercial o administración.',
+            confirmText: 'Marcar como Observado',
+            type: 'warning',
+            onConfirm: performMarkObservado
+        });
+    };
+
     const handleSignStamp = () => {
         triggerConfirm({
             title: 'Estampar Firma de Revisado',
@@ -601,9 +648,10 @@ export default function EditorPage() {
     };
 
     const handleDownloadClick = async () => {
-        if (docMetadata?.status === 'HECHO' && docMetadata?.fileLink) {
+        const isFinal = (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') && docMetadata?.fileLink;
+        if (isFinal) {
             try {
-                let path = docMetadata.fileLink;
+                let path = docMetadata!.fileLink;
                 if (path.startsWith('http')) {
                     const parts = path.split('/');
                     path = parts[parts.length - 1];
@@ -614,14 +662,14 @@ export default function EditorPage() {
                     .download(path);
 
                 if (downloadError || !fileData) {
-                    window.open(docMetadata.fileLink, '_blank');
+                    window.open(docMetadata!.fileLink, '_blank');
                     return;
                 }
 
                 const blobUrl = URL.createObjectURL(fileData);
                 const a = document.createElement('a');
                 a.href = blobUrl;
-                let downloadName = docMetadata.name || 'reporte_final.pdf';
+                let downloadName = docMetadata!.name || 'reporte_final.pdf';
                 if (!downloadName.toLowerCase().endsWith('.pdf')) {
                     downloadName += '.pdf';
                 }
@@ -631,10 +679,10 @@ export default function EditorPage() {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(blobUrl);
             } catch (err) {
-                window.open(docMetadata.fileLink, '_blank');
+                window.open(docMetadata!.fileLink, '_blank');
             }
         } else {
-            alert('El PDF final aún no ha sido compilado. Presione "Marcar como Finalizado" para generarlo.');
+            alert('El PDF final aún no ha sido compilado. Presione "Marcar como Completado" o "Cerrar por Balanza" para generarlo.');
         }
     };
 
@@ -1138,13 +1186,13 @@ export default function EditorPage() {
 
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Acciones de Edición</div>
-                    <button className={styles.actionBtn} onClick={handleAttachClick} disabled={saving} style={{ cursor: 'pointer' }}>
+                    <button className={styles.actionBtn} onClick={handleAttachClick} disabled={saving || docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA'} style={{ cursor: (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') ? 'not-allowed' : 'pointer', opacity: (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') ? 0.4 : 1 }}>
                         <Paperclip size={18} /> Adjuntar PDF (Concatenar)
                     </button>
                     <button
                         className={`${styles.actionBtn} ${selected.length ? styles.danger : ''}`}
                         onClick={deleteSelected}
-                        disabled={!selected.length || saving}
+                        disabled={!selected.length || saving || docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA'}
                         style={{ cursor: 'pointer' }}
                     >
                         <Trash2 size={18} /> Eliminar Seleccionadas ({selected.length})
@@ -1153,62 +1201,107 @@ export default function EditorPage() {
 
                 <div className={styles.panelSection}>
                     <div className={styles.panelTitle}>Autorización</div>
-                    {/* Caso Comercial / Admin */}
-                    {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && (
+
+                    {/* Banner de solo lectura para estados finales */}
+                    {(docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') && (
+                        <div style={{
+                            padding: '0.75rem',
+                            borderRadius: '8px',
+                            backgroundColor: docMetadata.status === 'HECHO' ? 'rgba(16,185,129,0.08)' : 'rgba(59,130,246,0.08)',
+                            border: `1px solid ${docMetadata.status === 'HECHO' ? 'rgba(16,185,129,0.3)' : 'rgba(59,130,246,0.3)'}`,
+                            color: docMetadata.status === 'HECHO' ? 'var(--status-success)' : '#3b82f6',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem'
+                        }}>
+                            <CheckCircle size={15} />
+                            {docMetadata.status === 'HECHO' ? 'Reporte Completado — Solo lectura' : 'Cerrado por Balanza — Solo lectura'}
+                        </div>
+                    )}
+
+                    {/* Acciones de Comercial / Admin — solo si NO está en estado final */}
+                    {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
                         <>
                             <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)', cursor: 'pointer' }} disabled={saving}>
                                 <FileSignature size={18} /> Estampar Firma de Revisado
                             </button>
-                            <button 
-                                className={`${styles.actionBtn} ${styles.primary}`} 
+                            <button
+                                className={`${styles.actionBtn} ${styles.primary}`}
                                 onClick={handleSaveAndCompile}
                                 disabled={saving || pages.length === 0}
                                 style={{ cursor: 'pointer' }}
                             >
-                                <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Finalizado'}
+                                <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Completado'}
                             </button>
                         </>
                     )}
-                    {/* Caso Balanza */}
-                    {userRole === 'VIEWER' && (
-                        <button 
+
+                    {/* Acciones de Balanza — solo si NO está en estado final */}
+                    {userRole === 'VIEWER' && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                        <>
+                            <button
+                                className={styles.actionBtn}
+                                onClick={handleCloseByBalanza}
+                                disabled={saving || pages.length === 0}
+                                style={{
+                                    cursor: 'pointer',
+                                    backgroundColor: '#3b82f6',
+                                    borderColor: '#3b82f6',
+                                    color: 'white'
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#2563eb';
+                                    e.currentTarget.style.borderColor = '#2563eb';
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#3b82f6';
+                                    e.currentTarget.style.borderColor = '#3b82f6';
+                                }}
+                            >
+                                <FileSignature size={18} /> {saving ? 'Procesando...' : 'Cerrar por Balanza'}
+                            </button>
+                            {docMetadata?.status !== 'OBSERVADO' && (
+                                <button
+                                    className={styles.actionBtn}
+                                    onClick={handleMarkObservado}
+                                    disabled={saving}
+                                    style={{
+                                        marginTop: '0.5rem',
+                                        cursor: 'pointer',
+                                        backgroundColor: 'rgba(245,158,11,0.08)',
+                                        borderColor: '#f59e0b',
+                                        color: '#f59e0b'
+                                    }}
+                                >
+                                    <Eye size={18} /> Marcar como Observado
+                                </button>
+                            )}
+                        </>
+                    )}
+
+                    {/* Guardar Borrador — visible para todos excepto en estados finales */}
+                    {docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                        <button
                             className={styles.actionBtn}
-                            onClick={handleCloseByBalanza}
+                            onClick={handleSaveDraft}
                             disabled={saving || pages.length === 0}
-                            style={{ 
-                                cursor: 'pointer',
-                                backgroundColor: '#3b82f6',
-                                borderColor: '#3b82f6',
-                                color: 'white'
-                            }}
-                            onMouseOver={(e) => {
-                                e.currentTarget.style.backgroundColor = '#2563eb';
-                                e.currentTarget.style.borderColor = '#2563eb';
-                            }}
-                            onMouseOut={(e) => {
-                                e.currentTarget.style.backgroundColor = '#3b82f6';
-                                e.currentTarget.style.borderColor = '#3b82f6';
-                            }}
+                            style={{ marginTop: '0.5rem', borderColor: 'var(--primary)', color: 'var(--primary)', cursor: 'pointer' }}
                         >
-                            <FileSignature size={18} /> {saving ? 'Procesando...' : 'Estampar y Cerrar por Balanza'}
+                            <Save size={18} /> Guardar Borrador
                         </button>
                     )}
-                    <button 
-                        className={styles.actionBtn} 
-                        onClick={handleSaveDraft}
-                        disabled={saving || pages.length === 0}
-                        style={{ marginTop: '0.5rem', borderColor: 'var(--primary)', color: 'var(--primary)', cursor: 'pointer' }}
-                    >
-                        <Save size={18} /> Guardar Borrador
-                    </button>
-                    {docMetadata?.status !== 'ERROR' && (
-                        <button 
-                            className={styles.actionBtn} 
+
+                    {/* Marcar como Error — visible solo para Comercial/Admin, no Balanza, y no en estados finales */}
+                    {userRole !== 'VIEWER' && docMetadata?.status !== 'ERROR' && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                        <button
+                            className={styles.actionBtn}
                             onClick={handleMarkError}
                             disabled={saving}
                             style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)', cursor: 'pointer' }}
                         >
-                            <AlertCircle size={18} /> Reportar Falla (Error)
+                            <AlertCircle size={18} /> Marcar como Error
                         </button>
                     )}
                 </div>

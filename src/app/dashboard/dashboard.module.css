@@ -227,6 +227,15 @@
     background-color: #3b82f6;
 }
 
+.statusBadge.observed {
+    background-color: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+}
+
+.statusBadge.observed::before {
+    background-color: #f59e0b;
+}
+
 .actionsCell {
     display: flex;
     align-items: center;

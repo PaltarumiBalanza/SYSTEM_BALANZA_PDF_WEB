@@ -54,7 +54,7 @@ export function DashboardView({ company }: DashboardViewProps) {
             const formatted = (data || []).map((doc: any) => ({
                 id: String(doc.id),
                 name: doc.name,
-                status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : doc.status === 'CERRADO POR BALANZA' ? 'closed' : 'error',
+                status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : doc.status === 'OBSERVADO' ? 'observed' : 'error',
                 region: doc.region || 'General',
                 creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
                 date: (() => {
@@ -386,7 +386,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                                         <td style={{ fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{row.date}</td>
                                         <td>
                                             <span className={`${styles.statusBadge} ${styles[row.status]}`}>
-                                                {row.status === 'pending' ? 'Pendiente' : row.status === 'success' ? 'Hecho' : row.status === 'closed' ? 'Cerrado Balanza' : 'Error'}
+                                                {row.status === 'pending' ? 'Pendiente' : row.status === 'success' ? 'Completado' : row.status === 'closed' ? 'Cerrado Balanza' : row.status === 'observed' ? 'Observado' : 'Error'}
                                             </span>
                                         </td>
                                         <td>{row.region}</td>
