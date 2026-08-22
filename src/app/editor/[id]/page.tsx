@@ -6,6 +6,7 @@ import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, Grip
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
 import { ConfirmModal } from '@/components/ui/Modal';
+import { AuthListener } from '@/components/auth/AuthListener';
 import { supabase } from '@/lib/supabaseClient';
 
 interface PageItem {
@@ -801,6 +802,7 @@ export default function EditorPage() {
 
     return (
         <div className={styles.editorLayout}>
+            <AuthListener />
             <input
                 type="file"
                 accept="application/pdf"
@@ -1299,10 +1301,24 @@ export default function EditorPage() {
                     {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && docMetadata?.status !== 'HECHO' && (
                         <>
                             <button
-                                className={`${styles.actionBtn} ${styles.primary}`}
+                                className={styles.actionBtn}
                                 onClick={handleSaveAndCompile}
                                 disabled={saving || pages.length === 0}
-                                style={{ cursor: 'pointer' }}
+                                style={{
+                                    cursor: 'pointer',
+                                    backgroundColor: '#10b981',
+                                    borderColor: '#10b981',
+                                    color: 'white',
+                                    fontWeight: 600
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#059669';
+                                    e.currentTarget.style.borderColor = '#059669';
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#10b981';
+                                    e.currentTarget.style.borderColor = '#10b981';
+                                }}
                             >
                                 <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Completado'}
                             </button>
@@ -1311,7 +1327,13 @@ export default function EditorPage() {
                                     className={styles.actionBtn}
                                     onClick={handleMarkError}
                                     disabled={saving}
-                                    style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)', cursor: 'pointer' }}
+                                    style={{
+                                        marginTop: '0.5rem',
+                                        backgroundColor: 'rgba(239,68,68,0.08)',
+                                        borderColor: '#ef4444',
+                                        color: '#ef4444',
+                                        cursor: 'pointer'
+                                    }}
                                 >
                                     <AlertCircle size={18} /> Marcar como Error
                                 </button>

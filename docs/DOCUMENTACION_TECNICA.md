@@ -98,12 +98,12 @@ src/
         └── PdfPageCanvas.tsx # Renderizador de miniaturas de páginas PDF con pdfjs-dist
 ```
 
-### Componentes UI Clave:
-1.  **`PdfPageCanvas`**: Utiliza la librería cliente `pdfjs-dist` para leer el buffer binario del PDF (`ArrayBuffer`) y renderizar en tiempo real una miniatura de la página específica en un elemento HTML `<canvas>`.
-2.  **`EditorPage` (`src/app/editor/[id]/page.tsx`)**:
-    *   **Drag & Drop**: Utiliza las APIs nativas de HTML5 (`onDragStart`, `onDragOver`, `onDrop`) para permitir el reordenamiento visual de las páginas del PDF.
-    *   **Concatenación**: Permite cargar archivos PDF externos locales, leer sus páginas y agregarlas dinámicamente al flujo de páginas del reporte editado.
-    *   **Firma visual**: Permite simular el estampado de una firma digital visual ("Revisado") en el documento.
+### Componentes UI y Autenticación Clave:
+1.  **`AuthListener` (`src/components/auth/AuthListener.tsx`)**: Monitorea de forma continua la validez de la sesión y expiración del JWT token de Supabase. Al detectar caducidad o desconexión por inactividad, despliega automáticamente un modal explicativo ("Inicio de Sesión Caducado") y redirige al usuario a la pantalla de login (`/login`).
+2.  **`PdfPageCanvas`**: Utiliza la librería cliente `pdfjs-dist` para leer el buffer binario del PDF (`ArrayBuffer`) y renderizar en tiempo real una miniatura de la página específica en un elemento HTML `<canvas>`.
+3.  **`EditorPage` (`src/app/editor/[id]/page.tsx`)**:
+    *   **Drag & Drop (Exclusivo Balanza/Admin)**: Permite el reordenamiento visual de las páginas del PDF únicamente para roles autorizados. Deshabilitado para el área Comercial.
+    *   **Concatenación**: Permite a Balanza/Admin cargar archivos PDF externos locales y agregarlos al flujo.
 
 ---
 
@@ -113,11 +113,11 @@ Las funciones del backend se desarrollan como Supabase Edge Functions escritas e
 *   **Estructura de Directorio**: Deben alojarse bajo la ruta estándar de la CLI: `supabase/functions/<nombre_de_funcion>/index.ts`.
 *   **Funciones Implementadas**:
     *   [`supabase/functions/sync-desktop-report/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/sync-desktop-report/index.ts): Gestiona la sincronización automática de reportes preliminares subidos desde el software de escritorio, su registro en base de datos y alertas por email mediante Resend.
-    *   [`supabase/functions/compile-and-sign-pdf/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/compile-and-sign-pdf/index.ts): Recibe el flujo ordenado de páginas, las concatena y extrae con `pdf-lib`, estampa la firma y guarda el PDF final en `final-reports`.
+    *   [`supabase/functions/compile-and-sign-pdf/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/compile-and-sign-pdf/index.ts): Recibe el flujo ordenado de páginas, las concatena y extrae con `pdf-lib`, estampa la firma/sello de Balanza y guarda el PDF final en `final-reports`. Soporta recuperación fallback dual (`raw-reports` ↔ `final-reports`).
 
 ---
 
-## 5. Diseño Visual y Estilos (Paltarumi Theme)
+## 5. Diseño Visual y Estilos (Paltarumi Theme & Código de Colores)
 
 El diseño del portal sigue la estética corporativa de **Paltarumi SAC**:
 *   **Modo Oscuro Industrial**: Fondo gris oscuro profundo con acentos de color ámbar/dorado representativos del sector de minería y refinado de metales.
@@ -127,4 +127,9 @@ El diseño del portal sigue la estética corporativa de **Paltarumi SAC**:
     *   `--border`: `#334155` (borde sutil gris)
     *   `--text-primary`: `#f8fafc` (blanco roto)
     *   `--text-secondary`: `#94a3b8` (gris slate)
-    *   Estados de alerta: Verde (`#10b981`), Rojo (`#ef4444`) e Info/Pendiente (`#f59e0b`).
+*   **Código de Colores Unificado**:
+    *   **COMPLETADO (`HECHO`)**: Verde Sólido (`#10b981`)
+    *   **CERRADO POR BALANZA (`CERRADO POR BALANZA`)**: Azul Sólido (`#3b82f6`)
+    *   **ERROR (`ERROR`)**: Rojo (`#ef4444`)
+    *   **PENDIENTE (`PENDIENTE`)**: Amarillo / Ámbar (`#f59e0b`)
+    *   **OBSERVADO (`OBSERVADO`)**: Ámbar / Naranja (`#f59e0b`)

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { AuthListener } from '@/components/auth/AuthListener';
 import styles from '@/components/layout/layout.module.css';
 
 export default function DashboardLayout({
@@ -21,6 +22,7 @@ export default function DashboardLayout({
 
     return (
         <div className={styles.layout}>
+            <AuthListener />
             <Sidebar isOpen={isSidebarOpen} />
             <main className={styles.main}>
                 <Navbar toggleSidebar={toggleSidebar} />
