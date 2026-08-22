@@ -1251,62 +1251,61 @@ export default function EditorPage() {
                         </div>
                     )}
 
-                    {/* Acciones de Comercial / Admin — solo si NO está en estado final */}
-                    {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                    {/* Acciones de Comercial / Admin */}
+                    {(userRole === 'ADMIN' || userRole === 'EDITOR' || userRole === 'SUPERVISOR') && docMetadata?.status !== 'HECHO' && (
                         <>
-                            <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)', cursor: 'pointer' }} disabled={saving}>
-                                <FileSignature size={18} /> Estampar Firma de Revisado
-                            </button>
+                            {docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                                <button className={styles.actionBtn} onClick={handleSignStamp} style={{ color: 'var(--status-success)', borderColor: 'rgba(16, 185, 129, 0.4)', cursor: 'pointer' }} disabled={saving}>
+                                    <FileSignature size={18} /> Estampar Firma de Revisado
+                                </button>
+                            )}
                             <button
                                 className={`${styles.actionBtn} ${styles.primary}`}
                                 onClick={handleSaveAndCompile}
                                 disabled={saving || pages.length === 0}
-                                style={{ cursor: 'pointer' }}
+                                style={{ cursor: 'pointer', marginTop: docMetadata?.status === 'CERRADO POR BALANZA' ? '0.5rem' : '0' }}
                             >
                                 <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Completado'}
                             </button>
+                            {docMetadata?.status === 'CERRADO POR BALANZA' && (
+                                <button
+                                    className={styles.actionBtn}
+                                    onClick={handleMarkError}
+                                    disabled={saving}
+                                    style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)', cursor: 'pointer' }}
+                                >
+                                    <AlertCircle size={18} /> Marcar como Error
+                                </button>
+                            )}
                         </>
                     )}
 
-                    {/* Acciones de Balanza */}
-                    {userRole === 'VIEWER' && docMetadata?.status !== 'HECHO' && (
+                    {/* Acciones de Balanza — solo en reportes no finalizados ni en CERRADO POR BALANZA */}
+                    {userRole === 'VIEWER' && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
                         <>
-                            {docMetadata?.status !== 'CERRADO POR BALANZA' && (
-                                <button
-                                    className={styles.actionBtn}
-                                    onClick={handleCloseByBalanza}
-                                    disabled={saving || pages.length === 0}
-                                    style={{
-                                        cursor: 'pointer',
-                                        backgroundColor: '#3b82f6',
-                                        borderColor: '#3b82f6',
-                                        color: 'white'
-                                    }}
-                                    onMouseOver={(e) => {
-                                        e.currentTarget.style.backgroundColor = '#2563eb';
-                                        e.currentTarget.style.borderColor = '#2563eb';
-                                    }}
-                                    onMouseOut={(e) => {
-                                        e.currentTarget.style.backgroundColor = '#3b82f6';
-                                        e.currentTarget.style.borderColor = '#3b82f6';
-                                    }}
-                                >
-                                    <FileSignature size={18} /> {saving ? 'Procesando...' : 'Cerrar por Balanza'}
-                                </button>
-                            )}
+                            <button
+                                className={styles.actionBtn}
+                                onClick={handleCloseByBalanza}
+                                disabled={saving || pages.length === 0}
+                                style={{
+                                    cursor: 'pointer',
+                                    backgroundColor: '#3b82f6',
+                                    borderColor: '#3b82f6',
+                                    color: 'white'
+                                }}
+                                onMouseOver={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#2563eb';
+                                    e.currentTarget.style.borderColor = '#2563eb';
+                                }}
+                                onMouseOut={(e) => {
+                                    e.currentTarget.style.backgroundColor = '#3b82f6';
+                                    e.currentTarget.style.borderColor = '#3b82f6';
+                                }}
+                            >
+                                <FileSignature size={18} /> {saving ? 'Procesando...' : 'Cerrar por Balanza'}
+                            </button>
 
-                            {docMetadata?.status === 'CERRADO POR BALANZA' && (
-                                <button
-                                    className={`${styles.actionBtn} ${styles.primary}`}
-                                    onClick={handleSaveAndCompile}
-                                    disabled={saving}
-                                    style={{ cursor: 'pointer', marginTop: '0.5rem' }}
-                                >
-                                    <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Completado'}
-                                </button>
-                            )}
-
-                            {docMetadata?.status !== 'OBSERVADO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
+                            {docMetadata?.status !== 'OBSERVADO' && (
                                 <button
                                     className={styles.actionBtn}
                                     onClick={handleMarkObservado}
@@ -1320,17 +1319,6 @@ export default function EditorPage() {
                                     }}
                                 >
                                     <Eye size={18} /> Marcar como Observado
-                                </button>
-                            )}
-
-                            {docMetadata?.status === 'CERRADO POR BALANZA' && (
-                                <button
-                                    className={styles.actionBtn}
-                                    onClick={handleMarkError}
-                                    disabled={saving}
-                                    style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)', cursor: 'pointer' }}
-                                >
-                                    <AlertCircle size={18} /> Marcar como Error
                                 </button>
                             )}
                         </>
@@ -1348,7 +1336,7 @@ export default function EditorPage() {
                         </button>
                     )}
 
-                    {/* Marcar como Error — visible solo para Comercial/Admin cuando NO sea CERRADO POR BALANZA (manejado arriba) ni HECHO ni ERROR */}
+                    {/* Marcar como Error — visible solo para Comercial/Admin cuando el estado no sea ERROR ni CERRADO POR BALANZA (manejado arriba) ni HECHO */}
                     {userRole !== 'VIEWER' && docMetadata?.status !== 'ERROR' && docMetadata?.status !== 'HECHO' && docMetadata?.status !== 'CERRADO POR BALANZA' && (
                         <button
                             className={styles.actionBtn}
