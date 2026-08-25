@@ -168,14 +168,15 @@ export default function EditorPage() {
                 const isFinalState = docData.status === 'HECHO' || docData.status === 'CERRADO POR BALANZA';
 
                 let originalBucket = 'raw-reports';
-                let originalPath = docData.file_link;
+                let originalPath = docData.file_link || '';
 
-                if (isFinalState) {
+                if (originalPath.startsWith('http')) {
+                    const parts = originalPath.split('/');
+                    originalPath = parts[parts.length - 1];
+                }
+
+                if (isFinalState || originalPath.startsWith('signed-')) {
                     originalBucket = 'final-reports';
-                    if (docData.file_link && docData.file_link.startsWith('http')) {
-                        const parts = docData.file_link.split('/');
-                        originalPath = parts[parts.length - 1];
-                    }
                 }
 
                 const pdfjsLib = await import('pdfjs-dist');
@@ -185,7 +186,7 @@ export default function EditorPage() {
 
                 // CORRECCIÓN CRÍTICA: Para reportes finalizados (HECHO / CERRADO POR BALANZA),
                 // cargar SIEMPRE el PDF compilado en final-reports, ignorando draft_operations.
-                // Esto evita hojas repetidas y descuadres entre lo que se ve y lo que se descarga.
+                // Para borrador o correcciones (PENDIENTE / OBSERVADO / ERROR), usar las páginas definidas en draft_operations.
                 if (!isFinalState && docData.draft_operations && Array.isArray(docData.draft_operations) && docData.draft_operations.length > 0) {
                     const draftOps = docData.draft_operations as any[];
                     const uniqueFiles = Array.from(new Set(draftOps.map(op => `${op.bucket}|${op.path}`)));
@@ -197,12 +198,12 @@ export default function EditorPage() {
                             .from(bucket)
                             .download(path);
                         
-                        // Fallback de autorecuperación: si falló en raw-reports porque el archivo fue renombrado, intentar con originalPath
-                        if ((fileError || !fileData) && bucket === 'raw-reports' && originalPath && originalPath !== path) {
-                            console.warn(`Archivo de borrador no encontrado en Storage (${path}). Reintentando con file_link actual (${originalPath})...`);
+                        // Fallback de autorecuperación: si no se encuentra en el bucket indicado, intentar en raw-reports o final-reports
+                        if (fileError || !fileData) {
+                            const altBucket = bucket === 'raw-reports' ? 'final-reports' : 'raw-reports';
                             const retryRes = await supabase.storage
-                                .from(originalBucket)
-                                .download(originalPath);
+                                .from(altBucket)
+                                .download(path);
                             if (!retryRes.error && retryRes.data) {
                                 fileData = retryRes.data;
                                 fileError = null;
@@ -222,15 +223,13 @@ export default function EditorPage() {
                         const key = `${op.bucket}|${op.path}`;
                         const pdfDoc = docMap[key];
                         const source = op.bucket === 'raw-reports' ? 'original' : op.path.split('-').pop() || 'anexo.pdf';
-                        // Si era raw-reports y se usó fallback, asegurar que use el path vigente
-                        const resolvedPath = (op.bucket === 'raw-reports' && originalPath) ? originalPath : op.path;
                         return {
                             id: idx + 1,
                             pageIndex: op.pageIndex,
                             source,
                             pdfDoc: pdfDoc || null,
                             bucket: op.bucket,
-                            path: resolvedPath
+                            path: op.path
                         };
                     });
                 } else {
