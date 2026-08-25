@@ -99,9 +99,11 @@ src/
 ```
 
 ### Componentes UI y Autenticación Clave:
-1.  **`AuthListener` (`src/components/auth/AuthListener.tsx`)**: Monitorea de forma continua la validez de la sesión y expiración del JWT token de Supabase. Al detectar caducidad o desconexión por inactividad, despliega automáticamente un modal explicativo ("Inicio de Sesión Caducado") y redirige al usuario a la pantalla de login (`/login`).
-2.  **`PdfPageCanvas`**: Utiliza la librería cliente `pdfjs-dist` para leer el buffer binario del PDF (`ArrayBuffer`) y renderizar en tiempo real una miniatura de la página específica en un elemento HTML `<canvas>`.
-3.  **`EditorPage` (`src/app/editor/[id]/page.tsx`)**:
+1.  **`AuthListener` (`src/components/auth/AuthListener.tsx`)**: Monitorea de forma continua la validez de la sesión y expiración del JWT token de Supabase. Soporta configuración de tokens de 6 horas (`jwt_expiry = 21600`) con `autoRefreshToken: true`. Al detectar caducidad o desconexión por inactividad, despliega automáticamente un modal explicativo ("Inicio de Sesión Caducado") y redirige al usuario a `/login`.
+2.  **`AlertModal` (`src/components/ui/Modal.tsx`)**: Modal de notificación estilizado con modo oscuro corporativo e iconos dinámicos (`CheckCircle` / `AlertCircle`) que reemplaza los cuadros de alerta nativos del navegador (`alert()`).
+3.  **`PdfPageCanvas`**: Utiliza la librería cliente `pdfjs-dist` para leer el buffer binario del PDF (`ArrayBuffer`) y renderizar en tiempo real una miniatura de la página específica en un elemento HTML `<canvas>`.
+4.  **`EditorPage` (`src/app/editor/[id]/page.tsx`)**:
+    *   **Prevención de Duplicación y Corrupción de Archivos**: Garantiza que al corregir o re-cerrar reportes en estado `ERROR` u `OBSERVADO`, las páginas del documento base carguen **estrictamente desde el PDF crudo original en `raw-reports`**, evitando encimar firmas sobre archivos compilados en `final-reports`.
     *   **Drag & Drop (Exclusivo Balanza/Admin)**: Permite el reordenamiento visual de las páginas del PDF únicamente para roles autorizados. Deshabilitado para el área Comercial.
     *   **Concatenación**: Permite a Balanza/Admin cargar archivos PDF externos locales y agregarlos al flujo.
 
@@ -112,6 +114,7 @@ src/
 Las funciones del backend se desarrollan como Supabase Edge Functions escritas en TypeScript y ejecutadas en Deno.
 *   **Estructura de Directorio**: Deben alojarse bajo la ruta estándar de la CLI: `supabase/functions/<nombre_de_funcion>/index.ts`.
 *   **Funciones Implementadas**:
+    *   [`supabase/functions/create-user/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/create-user/index.ts): Gestiona la creación administrativa de usuarios en Supabase Auth y base de datos con manejo de respuestas HTTP 400 y mensajes de error descriptivos en español (correos duplicados, contraseñas cortas).
     *   [`supabase/functions/sync-desktop-report/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/sync-desktop-report/index.ts): Gestiona la sincronización automática de reportes preliminares subidos desde el software de escritorio, su registro en base de datos y alertas por email mediante Resend.
     *   [`supabase/functions/compile-and-sign-pdf/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/compile-and-sign-pdf/index.ts): Recibe el flujo ordenado de páginas, las concatena y extrae con `pdf-lib`, estampa la firma/sello de Balanza y guarda el PDF final en `final-reports`. Soporta recuperación fallback dual (`raw-reports` ↔ `final-reports`).
 
