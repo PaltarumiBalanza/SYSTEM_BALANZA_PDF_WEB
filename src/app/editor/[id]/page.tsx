@@ -237,12 +237,25 @@ export default function EditorPage() {
                         throw new Error('El reporte no tiene un archivo PDF asociado.');
                     }
 
-                    const { data: fileData, error: fileError } = await supabase.storage
+                    let { data: fileData, error: fileError } = await supabase.storage
                         .from(originalBucket)
                         .download(originalPath);
 
                     if (fileError || !fileData) {
-                        throw new Error(fileError?.message || 'Fallo al descargar el archivo PDF.');
+                        const altBucket = originalBucket === 'raw-reports' ? 'final-reports' : 'raw-reports';
+                        console.warn(`Archivo ${originalPath} no encontrado en "${originalBucket}". Intentando en "${altBucket}"...`);
+                        const altRes = await supabase.storage
+                            .from(altBucket)
+                            .download(originalPath);
+                        if (!altRes.error && altRes.data) {
+                            fileData = altRes.data;
+                            fileError = null;
+                            originalBucket = altBucket;
+                        }
+                    }
+
+                    if (fileError || !fileData) {
+                        throw new Error(`Fallo al descargar el archivo PDF (${fileError?.message || 'Objeto no encontrado'}).`);
                     }
 
                     const buffer = await fileData.arrayBuffer();
@@ -548,11 +561,22 @@ export default function EditorPage() {
                 return;
             }
 
-            const operations = pages.map(p => ({
-                bucket: p.bucket,
-                path: p.path,
-                pageIndex: p.pageIndex
-            }));
+            const operations = pages.map(p => {
+                let cleanPath = p.path || '';
+                if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+                    const parts = cleanPath.split('/');
+                    cleanPath = parts[parts.length - 1];
+                }
+                let bucket = p.bucket || 'raw-reports';
+                if (cleanPath.startsWith('signed-')) {
+                    bucket = 'final-reports';
+                }
+                return {
+                    bucket,
+                    path: cleanPath,
+                    pageIndex: p.pageIndex
+                };
+            });
 
             const { error } = await supabase
                 .from('documents')
