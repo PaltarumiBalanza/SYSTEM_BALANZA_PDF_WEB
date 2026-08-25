@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Trash2, Printer, CheckCircle, FileSignature, Paperclip, GripVertical, Save, AlertCircle, LayoutGrid, List, Edit, Loader2, BookOpen, Eye } from 'lucide-react';
 import styles from './editor.module.css';
 import { PdfPageCanvas } from '@/components/ui/PdfPageCanvas';
-import { ConfirmModal } from '@/components/ui/Modal';
+import { ConfirmModal, AlertModal } from '@/components/ui/Modal';
 import { AuthListener } from '@/components/auth/AuthListener';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -22,6 +22,32 @@ export default function EditorPage() {
     const { id } = useParams();
     const router = useRouter();
     const [fromUrl, setFromUrl] = useState<string | null>(null);
+
+    const [alertModalConfig, setAlertModalConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'success' | 'danger' | 'warning' | 'info';
+        onCloseRedirect?: boolean;
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        type: 'success',
+        onCloseRedirect: false
+    });
+
+    const triggerAlertModal = (title: string, message: string, type: 'success' | 'danger' | 'warning' | 'info' = 'success', onCloseRedirect = false) => {
+        setAlertModalConfig({ isOpen: true, title, message, type, onCloseRedirect });
+    };
+
+    const handleAlertModalClose = () => {
+        const shouldRedirect = alertModalConfig.onCloseRedirect;
+        setAlertModalConfig(prev => ({ ...prev, isOpen: false }));
+        if (shouldRedirect) {
+            router.push(fromUrl || '/dashboard');
+        }
+    };
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -399,8 +425,7 @@ export default function EditorPage() {
                     action: 'CLOSE'
                 });
 
-                alert('Reporte marcado como Completado exitosamente.');
-                router.push(fromUrl || '/dashboard');
+                triggerAlertModal('Reporte Completado', 'El reporte ha sido procesado, compilado y marcado como COMPLETADO exitosamente.', 'success', true);
                 return;
             }
 
@@ -429,10 +454,9 @@ export default function EditorPage() {
             if (error) throw error;
             if (data?.error) throw new Error(data.error);
 
-            alert('Reporte marcado como Completado exitosamente.');
-            router.push(fromUrl || '/dashboard');
+            triggerAlertModal('Reporte Completado', 'El reporte ha sido procesado, compilado y marcado como COMPLETADO exitosamente.', 'success', true);
         } catch (err: any) {
-            alert('Error al compilar y firmar el PDF: ' + err.message);
+            triggerAlertModal('Error en Procesamiento', 'Error al compilar y firmar el PDF: ' + err.message, 'danger', false);
         } finally {
             setSaving(false);
         }
@@ -455,8 +479,7 @@ export default function EditorPage() {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                alert('No se detectó sesión activa de usuario.');
-                router.push('/login');
+                triggerAlertModal('Sesión Requerida', 'No se detectó sesión activa de usuario.', 'danger', true);
                 return;
             }
 
@@ -497,10 +520,9 @@ export default function EditorPage() {
                 console.error('Error al forzar estado CERRADO POR BALANZA:', statusUpdateError);
             }
 
-            alert('Reporte compilado y cerrado por Balanza exitosamente.');
-            router.push(fromUrl || '/dashboard');
+            triggerAlertModal('Cerrado por Balanza', 'El reporte ha sido firmado y registrado en estado CERRADO POR BALANZA exitosamente.', 'info', true);
         } catch (err: any) {
-            alert('Error al cerrar por Balanza: ' + err.message);
+            triggerAlertModal('Error de Cierre', 'Error al cerrar por Balanza: ' + err.message, 'danger', false);
         } finally {
             setSaving(false);
         }
@@ -523,8 +545,7 @@ export default function EditorPage() {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                alert('No se detectó sesión activa de usuario. Inicie sesión nuevamente.');
-                router.push('/login');
+                triggerAlertModal('Sesión Requerida', 'No se detectó sesión activa de usuario. Inicie sesión nuevamente.', 'danger', true);
                 return;
             }
 
@@ -549,9 +570,9 @@ export default function EditorPage() {
                 action: 'UPDATE'
             });
 
-            alert('Borrador guardado exitosamente.');
+            triggerAlertModal('Borrador Guardado', 'La ordenación y anexos actuales han sido guardados como borrador de trabajo exitosamente.', 'info', false);
         } catch (err: any) {
-            alert('Error al guardar borrador: ' + err.message);
+            triggerAlertModal('Error al Guardar', 'Error al guardar borrador: ' + err.message, 'danger', false);
         } finally {
             setSaving(false);
         }
@@ -573,8 +594,7 @@ export default function EditorPage() {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                alert('No se detectó sesión activa de usuario. Inicie sesión nuevamente.');
-                router.push('/login');
+                triggerAlertModal('Sesión Requerida', 'No se detectó sesión activa de usuario. Inicie sesión nuevamente.', 'danger', true);
                 return;
             }
 
@@ -591,10 +611,9 @@ export default function EditorPage() {
                 action: 'ERROR_MARKED'
             });
 
-            alert('Reporte marcado con error exitosamente.');
-            router.push(fromUrl || '/dashboard');
+            triggerAlertModal('Reporte Invalidado', 'El reporte ha sido marcado en estado de ERROR para su corrección.', 'danger', true);
         } catch (err: any) {
-            alert('Error al marcar reporte con error: ' + err.message);
+            triggerAlertModal('Error al Marcar', 'Error al marcar reporte con error: ' + err.message, 'danger', false);
         } finally {
             setSaving(false);
         }
@@ -615,8 +634,7 @@ export default function EditorPage() {
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
-                alert('No se detectó sesión activa de usuario. Inicie sesión nuevamente.');
-                router.push('/login');
+                triggerAlertModal('Sesión Requerida', 'No se detectó sesión activa de usuario. Inicie sesión nuevamente.', 'danger', true);
                 return;
             }
 
@@ -633,10 +651,9 @@ export default function EditorPage() {
                 action: 'OBSERVED'
             });
 
-            alert('Reporte marcado como Observado. El área correspondiente revisará las observaciones.');
-            router.push(fromUrl || '/dashboard');
+            triggerAlertModal('Reporte Observado', 'El reporte ha sido marcado como OBSERVADO exitosamente. El área correspondiente revisará las observaciones.', 'warning', true);
         } catch (err: any) {
-            alert('Error al marcar reporte como Observado: ' + err.message);
+            triggerAlertModal('Error al Marcar', 'Error al marcar reporte como Observado: ' + err.message, 'danger', false);
         } finally {
             setSaving(false);
         }
@@ -1435,6 +1452,14 @@ export default function EditorPage() {
                 message={confirmConfig.message}
                 confirmText={confirmConfig.confirmText}
                 type={confirmConfig.type}
+            />
+
+            <AlertModal
+                isOpen={alertModalConfig.isOpen}
+                onClose={handleAlertModalClose}
+                title={alertModalConfig.title}
+                message={alertModalConfig.message}
+                type={alertModalConfig.type}
             />
 
             {/* Lightbox / Visualizador Hoja por Hoja Nítido */}

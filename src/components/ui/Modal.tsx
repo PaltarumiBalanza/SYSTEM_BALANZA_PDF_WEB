@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, History, MessageSquare, User, Clock, AlertCircle } from 'lucide-react';
+import { X, History, MessageSquare, User, Clock, AlertCircle, CheckCircle } from 'lucide-react';
 import styles from './Modal.module.css';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -308,6 +308,51 @@ export function ConfirmModal({
                         style={{ padding: '0.5rem 1rem', borderRadius: '4px', border: 'none', backgroundColor: confirmColor, color: 'white', fontWeight: 600, cursor: 'pointer' }}
                     >
                         {confirmText}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function AlertModal({ 
+    isOpen, 
+    onClose, 
+    title, 
+    message, 
+    buttonText = 'Aceptar',
+    type = 'success'
+}: { 
+    isOpen: boolean; 
+    onClose: () => void; 
+    title: string; 
+    message: string;
+    buttonText?: string;
+    type?: 'success' | 'danger' | 'warning' | 'info';
+}) {
+    if (!isOpen) return null;
+
+    const modalColor = type === 'success' ? '#10b981' : type === 'danger' ? '#ef4444' : type === 'warning' ? '#f59e0b' : '#3b82f6';
+    const IconComponent = type === 'success' ? CheckCircle : type === 'danger' ? AlertCircle : type === 'warning' ? AlertCircle : CheckCircle;
+
+    return (
+        <div className={styles.backdrop} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div className={styles.modal} style={{ maxWidth: '420px', border: `1px solid ${modalColor}40` }}>
+                <div className={styles.header}>
+                    <h2><IconComponent size={22} color={modalColor} /> {title}</h2>
+                    <button className={styles.closeBtn} onClick={onClose} title="Cerrar">
+                        <X size={20} />
+                    </button>
+                </div>
+                <div className={styles.body}>
+                    <p style={{ color: 'var(--text-primary)', lineHeight: 1.6, fontSize: '0.9rem' }}>{message}</p>
+                </div>
+                <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button 
+                        onClick={onClose}
+                        style={{ padding: '0.55rem 1.25rem', borderRadius: '6px', border: 'none', backgroundColor: modalColor, color: 'white', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}
+                    >
+                        {buttonText}
                     </button>
                 </div>
             </div>
