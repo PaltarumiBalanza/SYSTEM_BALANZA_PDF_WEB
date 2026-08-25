@@ -79,10 +79,11 @@ CREATE TABLE IF NOT EXISTS public.documents (
     encargado_cierre UUID,
     file_link TEXT,
     -- PENDIENTE: En edición
-    -- CERRADO: Finalizado por balanza
+    -- CERRADO POR BALANZA: Finalizado por balanza
+    -- OBSERVADO: Con observaciones del área de balanza o comercial
     -- HECHO: Validado comercialmente (Firmado)
     -- ERROR: Falla de consistencia
-    status VARCHAR(15) NOT NULL CHECK (status IN ('PENDIENTE', 'CERRADO', 'HECHO', 'ERROR')) DEFAULT 'PENDIENTE',
+    status VARCHAR(30) NOT NULL CHECK (status IN ('PENDIENTE', 'CERRADO POR BALANZA', 'OBSERVADO', 'HECHO', 'ERROR')) DEFAULT 'PENDIENTE',
     CONSTRAINT fk_documents_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_encargado_cierre FOREIGN KEY (encargado_cierre) REFERENCES users(id) ON DELETE CASCADE
 );

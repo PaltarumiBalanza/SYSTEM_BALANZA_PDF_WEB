@@ -356,6 +356,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                         <button className={`${styles.filterBtn} ${filter === 'all' ? styles.active : ''}`} onClick={() => setFilter('all')}>Todos</button>
                         <button className={`${styles.filterBtn} ${filter === 'pending' ? styles.active : ''}`} onClick={() => setFilter('pending')}>Pendientes</button>
                         <button className={`${styles.filterBtn} ${filter === 'closed' ? styles.active : ''}`} onClick={() => setFilter('closed')}>Cerrados Balanza</button>
+                        <button className={`${styles.filterBtn} ${filter === 'observed' ? styles.active : ''}`} onClick={() => setFilter('observed')}>Observados</button>
                         <button className={`${styles.filterBtn} ${filter === 'success' ? styles.active : ''}`} onClick={() => setFilter('success')}>Completados</button>
                         <button className={`${styles.filterBtn} ${filter === 'error' ? styles.active : ''}`} onClick={() => setFilter('error')}>Errores</button>
                     </div>

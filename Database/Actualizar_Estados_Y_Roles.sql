@@ -13,7 +13,7 @@ ALTER TABLE public.documents DROP CONSTRAINT IF EXISTS documents_status_check;
 
 -- 3. Crear el nuevo constraint con los estados vigentes
 ALTER TABLE public.documents ADD CONSTRAINT documents_status_check 
-CHECK (status IN ('PENDIENTE', 'CERRADO POR BALANZA', 'HECHO', 'ERROR'));
+CHECK (status IN ('PENDIENTE', 'CERRADO POR BALANZA', 'OBSERVADO', 'HECHO', 'ERROR'));
 
 -- 4. Opcional: Migrar registros previos con estado 'CERRADO' a 'CERRADO POR BALANZA'
 UPDATE public.documents 

@@ -48,7 +48,17 @@ Deno.serve(async (req) => {
     });
 
     if (authError) {
-      throw authError;
+      let friendlyError = authError.message;
+      const lowerMsg = authError.message.toLowerCase();
+      if (lowerMsg.includes("already registered") || lowerMsg.includes("already been registered")) {
+        friendlyError = `El correo "${email}" ya se encuentra registrado en el sistema.`;
+      } else if (lowerMsg.includes("6 characters")) {
+        friendlyError = "La contraseña debe tener un mínimo de 6 caracteres.";
+      }
+      return new Response(
+        JSON.stringify({ error: friendlyError }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const newUserId = authData.user.id;

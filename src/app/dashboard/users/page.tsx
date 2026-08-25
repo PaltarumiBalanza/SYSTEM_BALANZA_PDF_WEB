@@ -212,12 +212,23 @@ export default function UsersPage() {
                 }
             });
 
-            if (error) throw error;
+            if (error) {
+                let errorMsg = error.message;
+                try {
+                    const responseBody = await error.context.json();
+                    if (responseBody?.error) {
+                        errorMsg = responseBody.error;
+                    }
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
+
             if (data?.error) throw new Error(data.error);
 
             fetchUsers();
             setNewUser({ name: '', email: '', role: 'Operador', password: '' });
             setShowNewUserModal(false);
+            alert('Usuario creado exitosamente.');
         } catch (err: any) {
             alert('Error al crear usuario: ' + err.message);
         }
