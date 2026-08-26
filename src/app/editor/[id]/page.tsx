@@ -189,16 +189,28 @@ export default function EditorPage() {
                 // Para borrador o correcciones (PENDIENTE / OBSERVADO / ERROR), usar las páginas definidas en draft_operations.
                 if (!isFinalState && docData.draft_operations && Array.isArray(docData.draft_operations) && docData.draft_operations.length > 0) {
                     const draftOps = docData.draft_operations as any[];
-                    const uniqueFiles = Array.from(new Set(draftOps.map(op => `${op.bucket}|${op.path}`)));
+                    
+                    const getCleanPath = (p: string) => {
+                        if (!p) return '';
+                        if (p.startsWith('http://') || p.startsWith('https://')) {
+                            const parts = p.split('/');
+                            return parts[parts.length - 1];
+                        }
+                        return p;
+                    };
+
+                    const uniqueFiles = Array.from(new Set(draftOps.map(op => `${op.bucket || 'raw-reports'}|${getCleanPath(op.path)}`)));
                     
                     const docMap: Record<string, any> = {};
                     await Promise.all(uniqueFiles.map(async (key) => {
-                        const [bucket, path] = key.split('|');
+                        const [bucket, rawPath] = key.split('|');
+                        const path = getCleanPath(rawPath);
+                        
                         let { data: fileData, error: fileError } = await supabase.storage
                             .from(bucket)
                             .download(path);
                         
-                        // Fallback de autorecuperación: si no se encuentra en el bucket indicado, intentar en raw-reports o final-reports
+                        // Fallback 1: Autorecuperación probando en el bucket alternativo (raw-reports <-> final-reports)
                         if (fileError || !fileData) {
                             const altBucket = bucket === 'raw-reports' ? 'final-reports' : 'raw-reports';
                             const retryRes = await supabase.storage
@@ -206,6 +218,18 @@ export default function EditorPage() {
                                 .download(path);
                             if (!retryRes.error && retryRes.data) {
                                 fileData = retryRes.data;
+                                fileError = null;
+                            }
+                        }
+
+                        // Fallback 2: Autorecuperación probando con originalPath si la ruta del borrador falló
+                        if ((fileError || !fileData) && originalPath && originalPath !== path) {
+                            const cleanOriginal = getCleanPath(originalPath);
+                            const retryOrig = await supabase.storage
+                                .from(originalBucket)
+                                .download(cleanOriginal);
+                            if (!retryOrig.error && retryOrig.data) {
+                                fileData = retryOrig.data;
                                 fileError = null;
                             }
                         }
@@ -220,16 +244,18 @@ export default function EditorPage() {
                     }));
 
                     loadedPages = draftOps.map((op, idx) => {
-                        const key = `${op.bucket}|${op.path}`;
+                        const cleanP = getCleanPath(op.path);
+                        const bck = op.bucket || 'raw-reports';
+                        const key = `${bck}|${cleanP}`;
                         const pdfDoc = docMap[key];
-                        const source = op.bucket === 'raw-reports' ? 'original' : op.path.split('-').pop() || 'anexo.pdf';
+                        const source = bck === 'raw-reports' ? 'original' : cleanP.split('-').pop() || 'anexo.pdf';
                         return {
                             id: idx + 1,
                             pageIndex: op.pageIndex,
                             source,
                             pdfDoc: pdfDoc || null,
-                            bucket: op.bucket,
-                            path: op.path
+                            bucket: bck,
+                            path: cleanP
                         };
                     });
                 } else {
@@ -1345,22 +1371,16 @@ export default function EditorPage() {
                                 onClick={handleSaveAndCompile}
                                 disabled={saving || pages.length === 0}
                                 style={{
-                                    cursor: 'pointer',
+                                    cursor: saving ? 'not-allowed' : 'pointer',
+                                    opacity: saving ? 0.6 : 1,
                                     backgroundColor: '#10b981',
                                     borderColor: '#10b981',
                                     color: 'white',
                                     fontWeight: 600
                                 }}
-                                onMouseOver={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#059669';
-                                    e.currentTarget.style.borderColor = '#059669';
-                                }}
-                                onMouseOut={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#10b981';
-                                    e.currentTarget.style.borderColor = '#10b981';
-                                }}
                             >
-                                <CheckCircle size={18} /> {saving ? 'Procesando...' : 'Marcar como Completado'}
+                                {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={18} />}
+                                {saving ? ' Procesando...' : ' Marcar como Completado'}
                             </button>
                             {docMetadata?.status === 'CERRADO POR BALANZA' && (
                                 <button
@@ -1372,10 +1392,12 @@ export default function EditorPage() {
                                         backgroundColor: 'rgba(239,68,68,0.08)',
                                         borderColor: '#ef4444',
                                         color: '#ef4444',
-                                        cursor: 'pointer'
+                                        cursor: saving ? 'not-allowed' : 'pointer',
+                                        opacity: saving ? 0.6 : 1
                                     }}
                                 >
-                                    <AlertCircle size={18} /> Marcar como Error
+                                    {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <AlertCircle size={18} />}
+                                    {saving ? ' Procesando...' : ' Marcar como Error'}
                                 </button>
                             )}
                         </>
@@ -1389,21 +1411,15 @@ export default function EditorPage() {
                                 onClick={handleCloseByBalanza}
                                 disabled={saving || pages.length === 0}
                                 style={{
-                                    cursor: 'pointer',
+                                    cursor: saving ? 'not-allowed' : 'pointer',
+                                    opacity: saving ? 0.6 : 1,
                                     backgroundColor: '#3b82f6',
                                     borderColor: '#3b82f6',
                                     color: 'white'
                                 }}
-                                onMouseOver={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#2563eb';
-                                    e.currentTarget.style.borderColor = '#2563eb';
-                                }}
-                                onMouseOut={(e) => {
-                                    e.currentTarget.style.backgroundColor = '#3b82f6';
-                                    e.currentTarget.style.borderColor = '#3b82f6';
-                                }}
                             >
-                                <FileSignature size={18} /> {saving ? 'Procesando...' : 'Cerrar por Balanza'}
+                                {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <FileSignature size={18} />}
+                                {saving ? ' Procesando...' : ' Cerrar por Balanza'}
                             </button>
 
                             {docMetadata?.status !== 'OBSERVADO' && (
@@ -1413,13 +1429,15 @@ export default function EditorPage() {
                                     disabled={saving}
                                     style={{
                                         marginTop: '0.5rem',
-                                        cursor: 'pointer',
+                                        cursor: saving ? 'not-allowed' : 'pointer',
+                                        opacity: saving ? 0.6 : 1,
                                         backgroundColor: 'rgba(245,158,11,0.08)',
                                         borderColor: '#f59e0b',
                                         color: '#f59e0b'
                                     }}
                                 >
-                                    <Eye size={18} /> Marcar como Observado
+                                    {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Eye size={18} />}
+                                    {saving ? ' Procesando...' : ' Marcar como Observado'}
                                 </button>
                             )}
                         </>
@@ -1431,9 +1449,16 @@ export default function EditorPage() {
                             className={styles.actionBtn}
                             onClick={handleSaveDraft}
                             disabled={saving || pages.length === 0}
-                            style={{ marginTop: '0.5rem', borderColor: 'var(--primary)', color: 'var(--primary)', cursor: 'pointer' }}
+                            style={{ 
+                                marginTop: '0.5rem', 
+                                borderColor: 'var(--primary)', 
+                                color: 'var(--primary)', 
+                                cursor: saving ? 'not-allowed' : 'pointer',
+                                opacity: saving ? 0.6 : 1 
+                            }}
                         >
-                            <Save size={18} /> Guardar Borrador
+                            {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={18} />}
+                            {saving ? ' Guardando...' : ' Guardar Borrador'}
                         </button>
                     )}
 
@@ -1443,9 +1468,16 @@ export default function EditorPage() {
                             className={styles.actionBtn}
                             onClick={handleMarkError}
                             disabled={saving}
-                            style={{ marginTop: '0.5rem', borderColor: 'var(--status-error)', color: 'var(--status-error)', cursor: 'pointer' }}
+                            style={{ 
+                                marginTop: '0.5rem', 
+                                borderColor: 'var(--status-error)', 
+                                color: 'var(--status-error)', 
+                                cursor: saving ? 'not-allowed' : 'pointer',
+                                opacity: saving ? 0.6 : 1
+                            }}
                         >
-                            <AlertCircle size={18} /> Marcar como Error
+                            {saving ? <Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> : <AlertCircle size={18} />}
+                            {saving ? ' Procesando...' : ' Marcar como Error'}
                         </button>
                     )}
                 </div>
