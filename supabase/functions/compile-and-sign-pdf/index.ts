@@ -157,26 +157,40 @@ Deno.serve(async (req) => {
 
     // 6. Actualizar registro del documento en la tabla SQL
     const finalStatus = targetStatus || "HECHO";
+
+    // Verificar si el supervisorId existe en public.users para evitar fallos de Foreign Key (fk_encargado_cierre)
+    let validSupervisorId: string | null = null;
+    if (supervisorId) {
+      const { data: userCheck } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", supervisorId)
+        .maybeSingle();
+      if (userCheck) {
+        validSupervisorId = userCheck.id;
+      }
+    }
+
     const { data: docData, error: docError } = await supabase
       .from("documents")
       .update({
         status: finalStatus,
         file_link: publicUrl.publicUrl,
         draft_operations: operations,
-        encargado_cierre: supervisorId,
+        encargado_cierre: validSupervisorId,
       })
       .eq("id", documentId)
       .select()
       .single();
 
     if (docError) {
-      throw docError;
+      throw new Error(`Error al actualizar estado en base de datos: ${docError.message}`);
     }
 
     // 7. Insertar logs de auditoría (Cierre / Firma)
     await supabase.from("audit_documents").insert({
       document_id: documentId,
-      user_id: supervisorId,
+      user_id: validSupervisorId,
       action: finalStatus === "CERRADO POR BALANZA" ? "CLOSE_BALANZA" : "CLOSE",
     });
 
@@ -192,7 +206,7 @@ Deno.serve(async (req) => {
   } catch (err: any) {
     return new Response(
       JSON.stringify({ error: err.message || String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -489,7 +489,16 @@ export default function EditorPage() {
                 }
             });
 
-            if (error) throw error;
+            if (error) {
+                let errorMsg = error.message;
+                try {
+                    const responseBody = await error.context.json();
+                    if (responseBody?.error) {
+                        errorMsg = responseBody.error;
+                    }
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
             if (data?.error) throw new Error(data.error);
 
             triggerAlertModal('Reporte Completado', 'El reporte ha sido procesado, compilado y marcado como COMPLETADO exitosamente.', 'success', true);
@@ -545,7 +554,16 @@ export default function EditorPage() {
                 }
             });
 
-            if (error) throw error;
+            if (error) {
+                let errorMsg = error.message;
+                try {
+                    const responseBody = await error.context.json();
+                    if (responseBody?.error) {
+                        errorMsg = responseBody.error;
+                    }
+                } catch (e) {}
+                throw new Error(errorMsg);
+            }
             if (data?.error) throw new Error(data.error);
 
             // Garantizar explícitamente en la base de datos el estado CERRADO POR BALANZA
