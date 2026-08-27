@@ -104,3 +104,18 @@ ALTER TABLE public.documents DROP CONSTRAINT IF EXISTS documents_status_check;
 ALTER TABLE public.documents ADD CONSTRAINT documents_status_check 
 CHECK (status IN ('PENDIENTE', 'CERRADO POR BALANZA', 'OBSERVADO', 'HECHO', 'ERROR'));
 ```
+
+---
+
+## 8. Bug #8: Fallo intermitente al "Cerrar por Balanza" (`Object not found` en `raw-reports`) tras varios reportes
+* **Síntoma**: Operadores de Balanza (`VIEWER`) podían cerrar 3–7 reportes y luego recibían *"Error descargando … desde Storage (raw-reports): Object not found"*. Tras cerrar sesión / redeploy y reabrir los **mismos** reportes, el cierre volvía a funcionar. Parecía un "tope" de sesión, pero no lo era.
+* **Diagnóstico**:
+  - El mensaje **no** es de JWT ni de inactividad: la Edge Function `compile-and-sign-pdf` sí se ejecutó (usa `SERVICE_ROLE_KEY`) y falló al bajar un PDF concreto.
+  - En el editor, el Fallback 2 de `loadOriginalPdf` recuperaba el PDF vía `file_link` para **mostrar** miniaturas, pero dejaba en `pages[].path` la ruta **fantasma** del borrador (`draft_operations`).
+  - Al cerrar, el cliente enviaba esa ruta inválida. Si `file_link` coincidía con la misma clave inexistente o los fallbacks del Edge no estaban desplegados, fallaba el cierre.
+  - El re-login / refresh forzó una recarga limpia del editor; por eso los mismos reportes “revivieron” sin ser un límite de N cierres por sesión.
+* **Solución**:
+  - `loadOriginalPdf` ahora guarda el **bucket/path reales** tras cada fallback (no el path roto del borrador).
+  - `buildCompileOperations()` unifica el armado de operaciones y evita enviar `signed-xxx` en estados no finales.
+  - Validación previa: no se permite cerrar si hay hojas sin `pdfDoc` válido.
+  - Mensaje de error del Edge Function incluye también el `file_link` intentado para diagnóstico.

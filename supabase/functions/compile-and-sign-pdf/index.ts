@@ -108,7 +108,11 @@ Deno.serve(async (req) => {
         }
 
         if (error || !data) {
-          throw new Error(`Error descargando ${cleanPath} desde Storage (${bucket}): ${error?.message || "Archivo no encontrado"}`);
+          throw new Error(
+            `Error descargando "${cleanPath}" desde Storage (${bucket}). ` +
+            `También se intentó file_link="${originalCleanPath || 'N/A'}". ` +
+            `Detalle: ${error?.message || "Archivo no encontrado"}`
+          );
         }
         const arrayBuffer = await data.arrayBuffer();
         srcDoc = await PDFDocument.load(arrayBuffer);

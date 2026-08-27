@@ -175,7 +175,13 @@ export default function EditorPage() {
                     originalPath = parts[parts.length - 1];
                 }
 
-                if (isFinalState || originalPath.startsWith('signed-')) {
+                // Regla de oro: solo HECHO / CERRADO POR BALANZA usan final-reports.
+                // En PENDIENTE / OBSERVADO / ERROR nunca forzar signed-xxx como base.
+                if (isFinalState) {
+                    originalBucket = 'final-reports';
+                } else if (originalPath.startsWith('signed-')) {
+                    // file_link apunta al compilado previo; no usarlo como fuente cruda.
+                    // Se intentará recuperar vía draft_operations o buckets alternativos.
                     originalBucket = 'final-reports';
                 }
 
@@ -184,60 +190,72 @@ export default function EditorPage() {
 
                 let loadedPages: PageItem[] = [];
 
+                const getCleanPath = (p: string) => {
+                    if (!p) return '';
+                    if (p.startsWith('http://') || p.startsWith('https://')) {
+                        const parts = p.split('/');
+                        return parts[parts.length - 1];
+                    }
+                    return p;
+                };
+
                 // CORRECCIÓN CRÍTICA: Para reportes finalizados (HECHO / CERRADO POR BALANZA),
                 // cargar SIEMPRE el PDF compilado en final-reports, ignorando draft_operations.
                 // Para borrador o correcciones (PENDIENTE / OBSERVADO / ERROR), usar las páginas definidas en draft_operations.
                 if (!isFinalState && docData.draft_operations && Array.isArray(docData.draft_operations) && docData.draft_operations.length > 0) {
                     const draftOps = docData.draft_operations as any[];
-                    
-                    const getCleanPath = (p: string) => {
-                        if (!p) return '';
-                        if (p.startsWith('http://') || p.startsWith('https://')) {
-                            const parts = p.split('/');
-                            return parts[parts.length - 1];
-                        }
-                        return p;
-                    };
 
                     const uniqueFiles = Array.from(new Set(draftOps.map(op => `${op.bucket || 'raw-reports'}|${getCleanPath(op.path)}`)));
                     
-                    const docMap: Record<string, any> = {};
+                    // Guarda el PDF y la ruta/bucket REALES tras fallbacks (evita cerrar con path fantasma)
+                    const docMap: Record<string, { pdfDoc: any; bucket: string; path: string }> = {};
                     await Promise.all(uniqueFiles.map(async (key) => {
-                        const [bucket, rawPath] = key.split('|');
-                        const path = getCleanPath(rawPath);
+                        const [bucketInit, rawPath] = key.split('|');
+                        let path = getCleanPath(rawPath);
+                        let bucket = bucketInit || 'raw-reports';
                         
                         let { data: fileData, error: fileError } = await supabase.storage
                             .from(bucket)
                             .download(path);
                         
-                        // Fallback 1: Autorecuperación probando en el bucket alternativo (raw-reports <-> final-reports)
+                        // Fallback 1: probar en todos los buckets disponibles
                         if (fileError || !fileData) {
-                            const altBucket = bucket === 'raw-reports' ? 'final-reports' : 'raw-reports';
-                            const retryRes = await supabase.storage
-                                .from(altBucket)
-                                .download(path);
-                            if (!retryRes.error && retryRes.data) {
-                                fileData = retryRes.data;
-                                fileError = null;
+                            const bucketsToTry = ['raw-reports', 'final-reports', 'annex-attachments'].filter(b => b !== bucket);
+                            for (const altBucket of bucketsToTry) {
+                                const retryRes = await supabase.storage
+                                    .from(altBucket)
+                                    .download(path);
+                                if (!retryRes.error && retryRes.data) {
+                                    fileData = retryRes.data;
+                                    fileError = null;
+                                    bucket = altBucket;
+                                    break;
+                                }
                             }
                         }
 
-                        // Fallback 2: Autorecuperación probando con originalPath si la ruta del borrador falló
+                        // Fallback 2: Autorecuperación con file_link (ruta real en BD)
                         if ((fileError || !fileData) && originalPath && originalPath !== path) {
                             const cleanOriginal = getCleanPath(originalPath);
-                            const retryOrig = await supabase.storage
-                                .from(originalBucket)
-                                .download(cleanOriginal);
-                            if (!retryOrig.error && retryOrig.data) {
-                                fileData = retryOrig.data;
-                                fileError = null;
+                            const origBuckets = [originalBucket, 'raw-reports', 'final-reports', 'annex-attachments'];
+                            for (const b of origBuckets) {
+                                const retryOrig = await supabase.storage
+                                    .from(b)
+                                    .download(cleanOriginal);
+                                if (!retryOrig.error && retryOrig.data) {
+                                    fileData = retryOrig.data;
+                                    fileError = null;
+                                    bucket = b;
+                                    path = cleanOriginal;
+                                    break;
+                                }
                             }
                         }
                         
                         if (!fileError && fileData) {
                             const buffer = await fileData.arrayBuffer();
                             const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
-                            docMap[key] = pdfDoc;
+                            docMap[key] = { pdfDoc, bucket, path };
                         } else {
                             console.error(`Fallo al descargar ${key}:`, fileError);
                         }
@@ -247,15 +265,17 @@ export default function EditorPage() {
                         const cleanP = getCleanPath(op.path);
                         const bck = op.bucket || 'raw-reports';
                         const key = `${bck}|${cleanP}`;
-                        const pdfDoc = docMap[key];
-                        const source = bck === 'raw-reports' ? 'original' : cleanP.split('-').pop() || 'anexo.pdf';
+                        const resolved = docMap[key];
+                        const resolvedBucket = resolved?.bucket || bck;
+                        const resolvedPath = resolved?.path || cleanP;
+                        const source = resolvedBucket === 'raw-reports' ? 'original' : resolvedPath.split('-').pop() || 'anexo.pdf';
                         return {
                             id: idx + 1,
                             pageIndex: op.pageIndex,
                             source,
-                            pdfDoc: pdfDoc || null,
-                            bucket: bck,
-                            path: cleanP
+                            pdfDoc: resolved?.pdfDoc || null,
+                            bucket: resolvedBucket,
+                            path: resolvedPath
                         };
                     });
                 } else {
@@ -436,6 +456,51 @@ export default function EditorPage() {
         }
     };
 
+    // Construye operaciones de compilación con rutas saneadas (nunca enviar signed- en estados no finales)
+    const buildCompileOperations = () => {
+        let fileLinkPath = docMetadata?.fileLink || '';
+        if (fileLinkPath.startsWith('http://') || fileLinkPath.startsWith('https://')) {
+            fileLinkPath = fileLinkPath.split('/').pop() || '';
+        }
+
+        const isNonFinal =
+            docMetadata?.status === 'PENDIENTE' ||
+            docMetadata?.status === 'OBSERVADO' ||
+            docMetadata?.status === 'ERROR' ||
+            !docMetadata?.status;
+
+        return pages.map(p => {
+            let cleanPath = p.path || '';
+            if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+                cleanPath = cleanPath.split('/').pop() || '';
+            }
+            let bucket = p.bucket || 'raw-reports';
+
+            // Regla de oro: en borrador/corrección no compilar desde signed-xxx
+            if (isNonFinal && cleanPath.startsWith('signed-') && fileLinkPath && !fileLinkPath.startsWith('signed-')) {
+                cleanPath = fileLinkPath;
+                bucket = 'raw-reports';
+            } else if (cleanPath.startsWith('signed-')) {
+                bucket = 'final-reports';
+            }
+
+            return {
+                bucket,
+                path: cleanPath,
+                pageIndex: p.pageIndex
+            };
+        });
+    };
+
+    const assertPagesReadyForCompile = () => {
+        const broken = pages.filter(p => !p.pdfDoc || !p.path);
+        if (broken.length > 0) {
+            throw new Error(
+                `Hay ${broken.length} hoja(s) sin archivo PDF válido en Storage. Recargue el reporte o limpie el borrador antes de cerrar.`
+            );
+        }
+    };
+
     // ---- Actions ----
     const performSaveAndCompile = async () => {
         if (pages.length === 0) return;
@@ -467,18 +532,8 @@ export default function EditorPage() {
                 return;
             }
 
-            const operations = pages.map(p => {
-                let cleanPath = p.path || '';
-                if (cleanPath.startsWith('http')) {
-                    const parts = cleanPath.split('/');
-                    cleanPath = parts[parts.length - 1];
-                }
-                return {
-                    bucket: p.bucket || 'raw-reports',
-                    path: cleanPath,
-                    pageIndex: p.pageIndex
-                };
-            });
+            assertPagesReadyForCompile();
+            const operations = buildCompileOperations();
 
             const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
                 body: {
@@ -530,18 +585,8 @@ export default function EditorPage() {
                 return;
             }
 
-            const operations = pages.map(p => {
-                let cleanPath = p.path || '';
-                if (cleanPath.startsWith('http')) {
-                    const parts = cleanPath.split('/');
-                    cleanPath = parts[parts.length - 1];
-                }
-                return {
-                    bucket: p.bucket || 'raw-reports',
-                    path: cleanPath,
-                    pageIndex: p.pageIndex
-                };
-            });
+            assertPagesReadyForCompile();
+            const operations = buildCompileOperations();
 
             // Compilar el PDF físico consolidado con todas las hojas y anexos en final-reports
             const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
@@ -605,22 +650,7 @@ export default function EditorPage() {
                 return;
             }
 
-            const operations = pages.map(p => {
-                let cleanPath = p.path || '';
-                if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
-                    const parts = cleanPath.split('/');
-                    cleanPath = parts[parts.length - 1];
-                }
-                let bucket = p.bucket || 'raw-reports';
-                if (cleanPath.startsWith('signed-')) {
-                    bucket = 'final-reports';
-                }
-                return {
-                    bucket,
-                    path: cleanPath,
-                    pageIndex: p.pageIndex
-                };
-            });
+            const operations = buildCompileOperations();
 
             const { error } = await supabase
                 .from('documents')
@@ -840,18 +870,8 @@ export default function EditorPage() {
             } else {
                 // Para reportes no finalizados (PENDIENTE, OBSERVADO, ERROR):
                 // Compilar dinámicamente en tiempo real todas las hojas visibles (originales + anexos + orden personalizado)
-                const operations = pages.map(p => {
-                    let cleanPath = p.path || '';
-                    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
-                        const parts = cleanPath.split('/');
-                        cleanPath = parts[parts.length - 1];
-                    }
-                    return {
-                        bucket: p.bucket || 'raw-reports',
-                        path: cleanPath,
-                        pageIndex: p.pageIndex
-                    };
-                });
+                assertPagesReadyForCompile();
+                const operations = buildCompileOperations();
 
                 const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
                     body: {
