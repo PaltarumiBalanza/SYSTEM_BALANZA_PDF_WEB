@@ -1,59 +1,50 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { AlertCircle, LogOut } from 'lucide-react';
 import styles from '@/components/ui/Modal.module.css';
 
 export function AuthListener() {
     const router = useRouter();
-    const pathname = usePathname();
     const [isExpired, setIsExpired] = useState(false);
+    const [sessionChecked, setSessionChecked] = useState(false);
 
     useEffect(() => {
-        if (pathname === '/login') return;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'INITIAL_SESSION') {
+                setSessionChecked(true);
+                setIsExpired(!session);
+                return;
+            }
 
-        const checkSession = async () => {
-            const { data: { session }, error } = await supabase.auth.getSession();
-            if (error || !session) {
+            if (event === 'SIGNED_OUT') {
                 setIsExpired(true);
                 return;
             }
 
-            if (session.expires_at && session.expires_at * 1000 <= Date.now()) {
-                setIsExpired(true);
-            }
-        };
-
-        checkSession();
-
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (pathname === '/login') return;
-
-            if (event === 'SIGNED_OUT' || !session) {
-                setIsExpired(true);
-            } else if (session?.expires_at && session.expires_at * 1000 <= Date.now()) {
-                setIsExpired(true);
+            if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+                setIsExpired(false);
             }
         });
 
         return () => {
             subscription.unsubscribe();
         };
-    }, [pathname]);
+    }, []);
 
     const handleRedirectToLogin = async () => {
         setIsExpired(false);
         try {
             await supabase.auth.signOut();
-        } catch (e) {
+        } catch {
             // Ignorar errores al desloguear si la sesión ya expiró
         }
         router.push('/login');
     };
 
-    if (!isExpired) return null;
+    if (!sessionChecked || !isExpired) return null;
 
     return (
         <div className={styles.backdrop} style={{ zIndex: 99999 }}>
@@ -63,7 +54,8 @@ export function AuthListener() {
                 </div>
                 <div className={styles.body}>
                     <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, fontSize: '0.9rem' }}>
-                        Su token de autenticación ha caducado por inactividad o expiración de seguridad.
+                        Su sesión ha finalizado o ya no es válida. Esto puede ocurrir al cerrar sesión
+                        en otro dispositivo o cuando el token de acceso expira sin poder renovarse.
                     </p>
                     <p style={{ color: 'var(--text-primary)', fontWeight: 600, marginTop: '0.5rem', fontSize: '0.9rem' }}>
                         Por favor, inicie sesión nuevamente para continuar trabajando en el sistema.

@@ -800,41 +800,116 @@ export default function EditorPage() {
     };
 
     const handleDownloadClick = async () => {
-        const isFinal = (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA') && docMetadata?.fileLink;
-        if (isFinal) {
-            try {
-                let path = docMetadata!.fileLink;
-                if (path.startsWith('http')) {
+        if (!docMetadata?.fileLink) {
+            triggerAlertModal('Atención', 'Este reporte no tiene un archivo PDF disponible para descargar.', 'warning', false);
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            const isFinal = (docMetadata?.status === 'HECHO' || docMetadata?.status === 'CERRADO POR BALANZA');
+
+            let downloadBlobUrl = '';
+            let downloadFileName = docMetadata.name || 'reporte.pdf';
+            if (!downloadFileName.toLowerCase().endsWith('.pdf')) {
+                downloadFileName += '.pdf';
+            }
+
+            if (isFinal) {
+                // Para reportes finalizados, descargar directamente el PDF compilado final en final-reports
+                let path = docMetadata.fileLink;
+                if (path.startsWith('http://') || path.startsWith('https://')) {
                     const parts = path.split('/');
                     path = parts[parts.length - 1];
                 }
 
-                const { data: fileData, error: downloadError } = await supabase.storage
+                let { data: fileData, error: downloadError } = await supabase.storage
                     .from('final-reports')
                     .download(path);
 
                 if (downloadError || !fileData) {
-                    window.open(docMetadata!.fileLink, '_blank');
-                    return;
+                    if (docMetadata.fileLink.startsWith('http')) {
+                        window.open(docMetadata.fileLink, '_blank');
+                        return;
+                    }
+                    throw new Error('No se pudo obtener el archivo desde el almacenamiento.');
                 }
 
-                const blobUrl = URL.createObjectURL(fileData);
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                let downloadName = docMetadata!.name || 'reporte_final.pdf';
-                if (!downloadName.toLowerCase().endsWith('.pdf')) {
-                    downloadName += '.pdf';
+                downloadBlobUrl = URL.createObjectURL(fileData);
+            } else {
+                // Para reportes no finalizados (PENDIENTE, OBSERVADO, ERROR):
+                // Compilar dinámicamente en tiempo real todas las hojas visibles (originales + anexos + orden personalizado)
+                const operations = pages.map(p => {
+                    let cleanPath = p.path || '';
+                    if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
+                        const parts = cleanPath.split('/');
+                        cleanPath = parts[parts.length - 1];
+                    }
+                    return {
+                        bucket: p.bucket || 'raw-reports',
+                        path: cleanPath,
+                        pageIndex: p.pageIndex
+                    };
+                });
+
+                const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
+                    body: {
+                        documentId: Number(reportId),
+                        supervisorId: user?.id,
+                        operations,
+                        sign: signed,
+                        targetStatus: docMetadata.status || 'PENDIENTE'
+                    }
+                });
+
+                if (error) {
+                    let errorMsg = error.message;
+                    try {
+                        const responseBody = await error.context.json();
+                        if (responseBody?.error) errorMsg = responseBody.error;
+                    } catch (e) {}
+                    throw new Error(errorMsg);
                 }
-                a.download = downloadName;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(blobUrl);
-            } catch (err) {
-                window.open(docMetadata!.fileLink, '_blank');
+
+                if (data?.error) throw new Error(data.error);
+
+                // Descargar el PDF recién compilado con todas sus hojas y anexos
+                let compiledPath = data.path || '';
+                if (compiledPath.startsWith('http')) {
+                    const parts = compiledPath.split('/');
+                    compiledPath = parts[parts.length - 1];
+                }
+
+                const { data: compiledFileData, error: compiledError } = await supabase.storage
+                    .from('final-reports')
+                    .download(compiledPath);
+
+                if (!compiledError && compiledFileData) {
+                    downloadBlobUrl = URL.createObjectURL(compiledFileData);
+                } else if (data.url) {
+                    window.open(data.url, '_blank');
+                    return;
+                } else {
+                    throw new Error('No se pudo recuperar el PDF compilado con anexos.');
+                }
             }
-        } else {
-            alert('El PDF final aún no ha sido compilado. Presione "Marcar como Completado" o "Cerrar por Balanza" para generarlo.');
+
+            const a = document.createElement('a');
+            a.href = downloadBlobUrl;
+            a.download = downloadFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadBlobUrl);
+        } catch (err: any) {
+            if (docMetadata?.fileLink && docMetadata.fileLink.startsWith('http')) {
+                window.open(docMetadata.fileLink, '_blank');
+            } else {
+                triggerAlertModal('Error de Descarga', 'No se pudo generar la descarga del PDF completo: ' + err.message, 'danger', false);
+            }
+        } finally {
+            setSaving(false);
         }
     };
 

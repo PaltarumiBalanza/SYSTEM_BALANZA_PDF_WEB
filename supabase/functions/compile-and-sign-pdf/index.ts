@@ -46,6 +46,19 @@ Deno.serve(async (req) => {
     // Cache local de archivos descargados para evitar descargar el mismo PDF varias veces
     const pdfCache: Record<string, PDFDocument> = {};
 
+    // Obtener información del documento original para autorecuperación por file_link
+    const { data: docRecord } = await supabase
+      .from("documents")
+      .select("file_link")
+      .eq("id", documentId)
+      .maybeSingle();
+
+    let originalCleanPath = docRecord?.file_link || "";
+    if (originalCleanPath.startsWith("http://") || originalCleanPath.startsWith("https://")) {
+      const parts = originalCleanPath.split("/");
+      originalCleanPath = parts[parts.length - 1];
+    }
+
     // 2. Reconstruir el PDF en base a las instrucciones de las páginas
     for (const op of operations) {
       let cleanPath = op.path || "";
@@ -65,15 +78,32 @@ Deno.serve(async (req) => {
       if (!srcDoc) {
         let { data, error } = await supabase.storage.from(bucket).download(cleanPath);
 
-        // Fallback autorecuperación: si falló la descarga en el bucket primario, probar en el bucket alternativo
+        // Fallback 1: Autorecuperación probando en todas las cubetas disponibles (annex-attachments, raw-reports, final-reports)
         if (error || !data) {
-          const altBucket = bucket === "raw-reports" ? "final-reports" : "raw-reports";
-          console.warn(`No se encontró ${cleanPath} en "${bucket}". Intentando en "${altBucket}"...`);
-          const altRes = await supabase.storage.from(altBucket).download(cleanPath);
-          if (!altRes.error && altRes.data) {
-            data = altRes.data;
-            error = null;
-            bucket = altBucket;
+          const bucketsToTry = ["annex-attachments", "raw-reports", "final-reports"].filter(b => b !== bucket);
+          for (const b of bucketsToTry) {
+            const res = await supabase.storage.from(b).download(cleanPath);
+            if (!res.error && res.data) {
+              data = res.data;
+              error = null;
+              bucket = b;
+              break;
+            }
+          }
+        }
+
+        // Fallback 2: Autorecuperación probando con la ruta original file_link si la clave de borrador no existe
+        if ((error || !data) && originalCleanPath && originalCleanPath !== cleanPath) {
+          const origBuckets = ["raw-reports", "final-reports", "annex-attachments"];
+          for (const b of origBuckets) {
+            const res = await supabase.storage.from(b).download(originalCleanPath);
+            if (!res.error && res.data) {
+              data = res.data;
+              error = null;
+              bucket = b;
+              cleanPath = originalCleanPath;
+              break;
+            }
           }
         }
 
@@ -85,14 +115,12 @@ Deno.serve(async (req) => {
         pdfCache[cacheKey] = srcDoc;
       }
 
-      // Validar índice de página (pdf-lib usa 0-based indices)
+      // Validar índice de página (pdf-lib usa 0-based indices) ajustando límites de forma segura
       const pageCount = srcDoc.getPageCount();
-      if (op.pageIndex < 1 || op.pageIndex > pageCount) {
-        throw new Error(`Índice de página ${op.pageIndex} fuera de rango. El archivo tiene ${pageCount} páginas.`);
-      }
+      const safePageIndex = Math.min(Math.max(1, op.pageIndex), pageCount);
 
       // Copiar la página seleccionada al nuevo documento
-      const [copiedPage] = await finalPdf.copyPages(srcDoc, [op.pageIndex - 1]);
+      const [copiedPage] = await finalPdf.copyPages(srcDoc, [safePageIndex - 1]);
       finalPdf.addPage(copiedPage);
     }
 

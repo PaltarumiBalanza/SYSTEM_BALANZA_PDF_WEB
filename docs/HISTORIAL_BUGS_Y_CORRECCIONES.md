@@ -68,6 +68,15 @@
 
 ---
 
+## 8. Mejora #8: Habilitación de Descarga Universal de PDF en Cualquier Estado
+* **Síntoma / Requerimiento**: Al presionar *"Descargar PDF Completo"* en reportes en estado `PENDIENTE`, `OBSERVADO` o `ERROR`, aparecía un mensaje bloqueante: *"El PDF final aún no ha sido compilado..."*.
+* **Solución**:
+  - Se eliminó la restricción en `handleDownloadClick` de [`src/app/editor/[id]/page.tsx`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/app/editor/%5Bid%5D/page.tsx).
+  - Si el reporte está en `PENDIENTE`, `OBSERVADO` o `ERROR`, descarga directamente el PDF base desde `raw-reports` (o por búsqueda cruzada en `final-reports`).
+  - Si el reporte está en `HECHO` o `CERRADO POR BALANZA`, descarga el PDF compilado firmado desde `final-reports`.
+
+---
+
 ## 🧹 Consultas SQL de Diagnóstico y Reparación Masiva
 
 ### A. Diagnóstico General de Reportes Afectados
