@@ -49,4 +49,5 @@ npm run dev
 npm run build
 ```
 
-Para más detalles, consulta la [Documentación Técnica](docs/DOCUMENTACION_TECNICA.md) y el [Flujo de Trabajo](docs/FLUJO_DE_TRABAJO.md).
+Para más detalles, consulta la [Documentación Técnica](docs/DOCUMENTACION_TECNICA.md), el [Historial de Bugs y Correcciones](docs/HISTORIAL_BUGS_Y_CORRECCIONES.md) y la [Skill de Agente AI (`balanza-pdf-workflow`)](.gemini/skills/balanza-pdf-workflow/SKILL.md).
+
