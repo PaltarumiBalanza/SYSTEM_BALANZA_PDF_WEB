@@ -23,8 +23,8 @@ export function DashboardView({ company }: DashboardViewProps) {
     const [tempName, setTempName] = useState('');
     const [renamingId, setRenamingId] = useState<string | null>(null);
 
-    // Estado para ordenación tipo Excel por columnas (Nombre, Fecha, Estado, Región, Creador)
-    const [sortColumn, setSortColumn] = useState<'name' | 'date' | 'status' | 'region' | 'creator' | null>(null);
+    // Estado para ordenación tipo Excel por columnas (Nombre, Fecha, Estado, Región, Última modificación)
+    const [sortColumn, setSortColumn] = useState<'name' | 'date' | 'status' | 'region' | 'lastModifiedBy' | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
     useEffect(() => {
@@ -36,14 +36,6 @@ export function DashboardView({ company }: DashboardViewProps) {
             }
         }
     }, []);
-
-    const sanitizeFileName = (fileName: string): string => {
-        return fileName
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Remueve acentos
-            .replace(/[ñÑ]/g, "n")
-            .replace(/[^a-zA-Z0-9.\s-]/g, "_"); // Mantiene espacios y caracteres alfanuméricos válidos
-    };
 
     const fetchReports = async () => {
         setLoading(true);
@@ -65,6 +57,33 @@ export function DashboardView({ company }: DashboardViewProps) {
                 .order('id', { ascending: false });
 
             if (error) throw error;
+
+            const docIds = (data || []).map((doc: any) => doc.id);
+            const lastModifiedByMap = new Map<number, string>();
+
+            if (docIds.length > 0) {
+                const { data: auditData, error: auditError } = await supabase
+                    .from('audit_documents')
+                    .select(`
+                        document_id,
+                        modification_date,
+                        users (first_name, last_name)
+                    `)
+                    .in('document_id', docIds)
+                    .order('modification_date', { ascending: false });
+
+                if (!auditError && auditData) {
+                    for (const entry of auditData) {
+                        if (!lastModifiedByMap.has(entry.document_id)) {
+                            const user = entry.users as { first_name?: string; last_name?: string } | null;
+                            const fullName = user
+                                ? [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+                                : '';
+                            lastModifiedByMap.set(entry.document_id, fullName || 'Sistema');
+                        }
+                    }
+                }
+            }
 
             const formatted = (data || []).map((doc: any) => {
                 let timestamp = 0;
@@ -92,7 +111,8 @@ export function DashboardView({ company }: DashboardViewProps) {
                     name: doc.name,
                     status: doc.status === 'PENDIENTE' ? 'pending' : doc.status === 'HECHO' ? 'success' : (doc.status === 'CERRADO' || doc.status === 'CERRADO POR BALANZA') ? 'closed' : doc.status === 'OBSERVADO' ? 'observed' : 'error',
                     region: doc.region || 'General',
-                    creator: doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema',
+                    lastModifiedBy: lastModifiedByMap.get(doc.id)
+                        || (doc.users ? `${doc.users.first_name} ${doc.users.last_name || ''}`.trim() : 'Sistema'),
                     date: dateFormatted,
                     timestamp: timestamp,
                     comments: 0,
@@ -115,7 +135,7 @@ export function DashboardView({ company }: DashboardViewProps) {
             return;
         }
 
-        const cleanName = sanitizeFileName(tempName.trim());
+        const cleanName = tempName.trim();
         if (!cleanName) {
             alert('El nombre del archivo no es válido.');
             return;
@@ -198,7 +218,7 @@ export function DashboardView({ company }: DashboardViewProps) {
         }
     };
 
-    const handleSort = (col: 'name' | 'date' | 'status' | 'region' | 'creator') => {
+    const handleSort = (col: 'name' | 'date' | 'status' | 'region' | 'lastModifiedBy') => {
         if (sortColumn === col) {
             if (sortDirection === 'asc') {
                 setSortDirection('desc');
@@ -221,7 +241,7 @@ export function DashboardView({ company }: DashboardViewProps) {
         const query = searchQuery.toLowerCase();
         return r.id.toLowerCase().includes(query) || 
                r.name.toLowerCase().includes(query) || 
-               r.creator.toLowerCase().includes(query) || 
+               r.lastModifiedBy.toLowerCase().includes(query) || 
                r.region.toLowerCase().includes(query);
     });
 
@@ -241,7 +261,7 @@ export function DashboardView({ company }: DashboardViewProps) {
         return 0;
     });
 
-    const renderSortHeader = (label: string, col: 'name' | 'date' | 'status' | 'region' | 'creator') => {
+    const renderSortHeader = (label: string, col: 'name' | 'date' | 'status' | 'region' | 'lastModifiedBy') => {
         const isActive = sortColumn === col;
         return (
             <th 
@@ -347,7 +367,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                         <Search size={18} color="var(--text-secondary)" />
                         <input 
                             type="text" 
-                            placeholder="Buscar por ID, Creador o Región..." 
+                            placeholder="Buscar por ID, Usuario o Región..." 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
@@ -380,7 +400,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                                     {renderSortHeader('Fecha', 'date')}
                                     {renderSortHeader('Estado', 'status')}
                                     {renderSortHeader('Región', 'region')}
-                                    {renderSortHeader('Creador', 'creator')}
+                                    {renderSortHeader('Última modificación por', 'lastModifiedBy')}
                                     <th>Trazabilidad</th>
                                     <th>Comentarios</th>
                                     <th style={{ textAlign: 'right' }}>Acciones</th>
@@ -468,7 +488,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                                             </span>
                                         </td>
                                         <td>{row.region}</td>
-                                        <td>{row.creator}</td>
+                                        <td>{row.lastModifiedBy}</td>
                                         <td>
                                             <button className={styles.traceBtn} title="Ver Trazabilidad" onClick={() => handleOpenTrace(row.id)}>
                                                 <History size={16} />

@@ -5,6 +5,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/** Extrae la clave de storage desde una ruta relativa o URL pública de Supabase. */
+function extractStoragePath(fileLink: string, bucket: string): string {
+  const decoded = decodeURIComponent(fileLink.trim());
+  if (!decoded.startsWith("http")) {
+    return decoded;
+  }
+  const bucketPattern = new RegExp(`${bucket}/(.+?)(?:\\?|$)`);
+  const match = decoded.match(bucketPattern);
+  if (match?.[1]) {
+    return match[1];
+  }
+  const parts = decoded.split("/");
+  return parts[parts.length - 1] || decoded;
+}
+
+const FINAL_REPORT_STATUSES = new Set(["HECHO", "CERRADO POR BALANZA"]);
+
 Deno.serve(async (req) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -89,21 +106,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Determine bucket and current storage path
-    let bucket = "raw-reports";
-    let oldPath = currentFileLink;
+    const isFinalReport = FINAL_REPORT_STATUSES.has(docData.status);
 
-    if (docData.status === "HECHO") {
-      bucket = "final-reports";
-      if (currentFileLink.startsWith("http")) {
-        const parts = currentFileLink.split("/");
-        oldPath = parts[parts.length - 1];
-      }
+    // Determine bucket and current storage path
+    const bucket = isFinalReport ? "final-reports" : "raw-reports";
+    let oldPath = extractStoragePath(currentFileLink, bucket);
+
+    // Si el path apunta a signed-* pero estamos en raw-reports, intentar final-reports
+    if (!isFinalReport && oldPath.startsWith("signed-")) {
+      oldPath = extractStoragePath(currentFileLink, "final-reports");
     }
 
     // Parse the prefix (timestamp/system prefix) to maintain uniqueness
     let prefix = "";
-    if (docData.status === "HECHO") {
+    if (isFinalReport) {
       const match = oldPath.match(/^(signed-\d+-\d+)-?/);
       prefix = match ? `${match[1]}-` : `signed-${documentId}-${Date.now()}-`;
     } else {
@@ -119,8 +135,6 @@ Deno.serve(async (req) => {
       .from(bucket)
       .move(oldPath, newPath);
 
-    // If the file was not found in storage, we can still proceed or return an error depending on preference.
-    // Here we will fail the operation so that the DB and Storage don't go out of sync.
     if (moveError) {
       console.error("Storage move error:", moveError);
       return new Response(
@@ -131,7 +145,7 @@ Deno.serve(async (req) => {
 
     // 6. Calculate new database file_link
     let newFileLink = newPath;
-    if (docData.status === "HECHO") {
+    if (isFinalReport) {
       const { data: publicUrlData } = supabaseAdmin.storage
         .from("final-reports")
         .getPublicUrl(newPath);
@@ -155,7 +169,7 @@ Deno.serve(async (req) => {
       throw updateError;
     }
 
-    // 8. Cascade update in draft_operations of other documents
+    // 8. Cascade update in draft_operations of other documents (solo referencias al bucket renombrado)
     const { data: allDocs, error: allDocsError } = await supabaseAdmin
       .from("documents")
       .select("id, draft_operations")

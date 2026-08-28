@@ -6,6 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+/** Preserva el nombre original del archivo (espacios, guiones, etc.) sin sanitizar a guiones bajos. */
+function resolveDocumentName(formData: FormData, file: File): string {
+  const explicit =
+    (formData.get("filename") as string | null) ||
+    (formData.get("displayName") as string | null) ||
+    (formData.get("name") as string | null);
+
+  const raw = (explicit?.trim() || file.name || "").trim();
+  if (!raw) return "reporte.pdf";
+  return raw.toLowerCase().endsWith(".pdf") ? raw : `${raw}.pdf`;
+}
+
 Deno.serve(async (req) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -72,8 +84,9 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 3. Subir el PDF original al bucket "raw-reports"
-    const fileName = `${Date.now()}-${file.name}`;
+    // 3. Subir el PDF original al bucket "raw-reports" (nombre sin sanitizar)
+    const documentName = resolveDocumentName(formData, file);
+    const fileName = `${Date.now()}-${documentName}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("raw-reports")
       .upload(fileName, file, {
@@ -86,15 +99,23 @@ Deno.serve(async (req) => {
     }
 
     // Obtener la ruta del archivo relativa
-    const fileLinkPath = uploadData.path; // Guardamos la ruta relativa para descargas directas del bucket
+    const fileLinkPath = uploadData.path;
+
+    // Obtener email del operador para la notificación (opcional)
+    const { data: operatorProfile } = await supabase
+      .from("users")
+      .select("email")
+      .eq("id", creatorId)
+      .maybeSingle();
+    const operatorEmail = operatorProfile?.email || creatorId;
 
     // 4. Registrar documento en la tabla "documents" con estado PENDIENTE
     const { data: docData, error: docError } = await supabase
       .from("documents")
       .insert({
         user_id: creatorId,
-        name: file.name,
-        file_link: fileLinkPath, // Guardamos la ruta del archivo en el bucket
+        name: documentName,
+        file_link: fileLinkPath,
         status: "PENDIENTE",
         region: region,
         company: company.toUpperCase() === "ECOGOLD" ? "ECOGOLD" : "PSAC",
@@ -132,9 +153,9 @@ Deno.serve(async (req) => {
             <h3>Nuevo Reporte Preliminar Recibido</h3>
             <p>Se ha subido un nuevo reporte preliminar de pesaje listo para ser auditado en el sistema web.</p>
             <ul>
-              <li><strong>Archivo:</strong> ${file.name}</li>
+              <li><strong>Archivo:</strong> ${documentName}</li>
               <li><strong>Región:</strong> ${region}</li>
-              <li><strong>Operador:</strong> ${user.email}</li>
+              <li><strong>Operador:</strong> ${operatorEmail}</li>
               <li><strong>Fecha y Hora:</strong> ${new Date().toLocaleString("es-PE", { timeZone: "America/Lima" })}</li>
             </ul>
             <p>Puedes revisarlo, reordenar sus páginas y firmarlo desde el <a href="${Deno.env.get("FRONTEND_URL") || "http://localhost:3000"}/editor/${docData.id}">Editor de Reportes</a>.</p>
