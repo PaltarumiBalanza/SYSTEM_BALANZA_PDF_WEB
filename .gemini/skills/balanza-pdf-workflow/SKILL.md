@@ -4,7 +4,8 @@ description: >
   Guía y protocolo técnico para la gestión de reportes de balanza en Paltarumi SAC.
   Utilizar cuando el usuario solicite editar reportes, corregir duplicación de páginas,
   gestionar estados RBAC (HECHO, CERRADO POR BALANZA, OBSERVADO, ERROR, PENDIENTE),
-  configurar la Edge Function compile-and-sign-pdf, o administrar autenticación/tokens de 6h.
+  configurar la Edge Function compile-and-sign-pdf, renombrar documentos,
+  integrar sync-desktop-report con nombres originales, o administrar autenticación/tokens de 6h.
 ---
 
 # Balanza PDF Workflow & Maintenance Skill
@@ -84,3 +85,40 @@ UPDATE public.documents
 SET status = 'PENDIENTE', draft_operations = NULL
 WHERE id = <ID_DOCUMENTO>;
 ```
+
+---
+
+## 6. Dashboard: Columna "Última modificación por"
+
+- Los paneles **PSAC** y **ECOGOLD** (`DashboardView.tsx`) muestran quién realizó la **última acción** según `audit_documents`, no el operador de la subida original.
+- Consulta batch: ordenar por `modification_date DESC`, tomar la primera entrada por `document_id`.
+- Respaldo: si no hay trazas, usar `documents.user_id`.
+- Acciones que actualizan esta columna: `CREATE`, `UPDATE`, `CLOSE_BALANZA`, `CLOSE`, `OBSERVED`, `ERROR_MARKED`, `RENAME: ...`.
+
+---
+
+## 7. Subida desde Escritorio: Preservación de Nombres
+
+- Edge Function: `sync-desktop-report` → función `resolveDocumentName()`.
+- **No sanitizar** espacios ni convertir a guiones bajos en `documents.name`.
+- Prioridad del nombre: `filename` → `displayName` → `name` (FormData) → `file.name`.
+- Path en Storage: `{timestamp}-{nombre}` (prefijo técnico; el nombre visible es `documents.name`).
+- Recomendación al cliente de escritorio:
+  ```javascript
+  formData.append('file', pdfBlob, '34 pato.pdf');
+  formData.append('filename', '34 pato.pdf');
+  ```
+
+---
+
+## 8. Renombrado Seguro por Estado
+
+| Estado | Bucket | ¿Toca `raw-reports`? |
+| :--- | :--- | :--- |
+| `PENDIENTE`, `OBSERVADO`, `ERROR` | `raw-reports` | Sí (mueve el crudo) |
+| `CERRADO POR BALANZA`, `HECHO` | `final-reports` | **No** (solo mueve el firmado) |
+
+- Edge Function: `rename-document` → `extractStoragePath()` para URLs públicas.
+- El dashboard envía el nombre sin `sanitizeFileName()` (espacios permitidos).
+- Siempre registrar traza `RENAME` en `audit_documents`.
+- Despliegue: `supabase functions deploy rename-document`.

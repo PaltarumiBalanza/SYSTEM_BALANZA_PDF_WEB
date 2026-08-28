@@ -37,9 +37,10 @@ graph TD
 *   **Acción**: El software de escritorio realiza web scraping de los datos de pesaje directamente desde los controladores de las balanzas físicas en la mina y genera un reporte preliminar en PDF.
 
 ### Etapa 2: Carga e Integración (API Webhook)
-*   **Actor**: Servidor / Endpoint API (Futura Supabase Function).
-*   **Acción**: El software de escritorio envía el PDF preliminar y sus metadatos (región, operador, fecha) al portal web mediante un webhook de subida.
-*   **Estado**: El documento entra al sistema con estado **PENDIENTE**.
+*   **Actor**: Edge Function `sync-desktop-report`.
+*   **Acción**: El software de escritorio envía el PDF preliminar y sus metadatos (región, empresa, operador) al portal web mediante `multipart/form-data` con autenticación Bearer JWT.
+*   **Nomenclatura**: El nombre del archivo se preserva **tal cual** lo definió el operador en el escritorio (espacios incluidos, ej: `34 pato.pdf`). Se recomienda enviar el campo `filename` en el FormData además del archivo. El path interno en Storage es `{timestamp}-{nombre}`; el campo visible `documents.name` guarda el nombre original sin sanitizar.
+*   **Estado**: El documento entra al sistema con estado **PENDIENTE** y se registra traza `CREATE` en `audit_documents`.
 
 ### Etapa 3: Notificación de Revisión
 *   **Actor**: Sistema.
@@ -68,6 +69,8 @@ graph TD
 
 Para cumplir con normativas de seguridad industrial y auditorías de metales de Paltarumi, cada cambio en un documento debe registrarse cronológicamente:
 
-1.  **Registro de Evento**: Cada vez que un usuario realiza una acción (`CREAR`, `MODIFICAR ORDEN`, `ELIMINAR PÁGINAS`, `ADJUNTAR ANEXO`, `FIRMAR`, `COMENTAR`), el frontend enviará una petición para insertar una traza en `audit_documents`.
-2.  **Consulta de Historial**: Desde el Dashboard, los usuarios con permisos pueden pulsar **Historial (Trazabilidad)** en cualquier reporte para ver de inmediato la línea de tiempo de modificaciones.
-3.  **Comentarios**: La sección de **Feedback** permite añadir notas explicativas en caso de que un reporte pase a estado `ERROR` (ej: *"Se detectó descuadre de 2 toneladas en ticket de página 2, re-subiendo"*).
+1.  **Registro de Evento**: Cada vez que un usuario realiza una acción (`CREATE`, `UPDATE`, `CLOSE_BALANZA`, `CLOSE`, `OBSERVED`, `ERROR_MARKED`, `RENAME`, etc.), el sistema inserta una traza en `audit_documents`.
+2.  **Consulta de Historial**: Desde el Dashboard, los usuarios pueden pulsar **Historial (Trazabilidad)** en cualquier reporte para ver la línea de tiempo de modificaciones.
+3.  **Columna Última modificación por**: En los paneles PSAC y ECOGOLD, la tabla muestra el usuario que realizó la acción más reciente según `audit_documents` (no el operador original de la subida).
+4.  **Comentarios**: La sección de **Feedback** permite añadir notas explicativas en caso de que un reporte pase a estado `ERROR` (ej: *"Se detectó descuadre de 2 toneladas en ticket de página 2, re-subiendo"*).
+5.  **Renombrado**: Desde el dashboard se puede renombrar reportes en cualquier estado. En `CERRADO POR BALANZA` y `HECHO` solo se renombra el PDF firmado en `final-reports`; el crudo en `raw-reports` permanece intacto.

@@ -119,3 +119,37 @@ CHECK (status IN ('PENDIENTE', 'CERRADO POR BALANZA', 'OBSERVADO', 'HECHO', 'ERR
   - `buildCompileOperations()` unifica el armado de operaciones y evita enviar `signed-xxx` en estados no finales.
   - Validación previa: no se permite cerrar si hay hojas sin `pdfDoc` válido.
   - Mensaje de error del Edge Function incluye también el `file_link` intentado para diagnóstico.
+
+---
+
+## 9. Mejora #9: Columna "Última modificación por" en paneles PSAC/ECOGOLD
+* **Requerimiento**: Reemplazar la columna **Creador** (operador de subida) por **Última modificación por**, reflejando quién realizó la última acción sobre el reporte.
+* **Solución**:
+  - En [`src/components/dashboard/DashboardView.tsx`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/components/dashboard/DashboardView.tsx), tras cargar documentos se consulta `audit_documents` en batch (orden `modification_date DESC`) y se toma el usuario de la traza más reciente por `document_id`.
+  - Si no hay trazas, se usa el operador original como respaldo.
+  - Búsqueda y ordenación actualizadas para la nueva columna.
+
+---
+
+## 10. Mejora #10: Preservación de nombres originales desde software de escritorio
+* **Síntoma**: Los clientes reportaban nombres como `34 pato` convertidos a `34_pato` al subir desde el sistema de escritorio.
+* **Diagnóstico**:
+  - La Edge Function `sync-desktop-report` ya usaba `file.name` sin sanitizar, pero el cliente de escritorio podía alterar el nombre del objeto `File` antes del envío.
+  - El dashboard aplicaba `sanitizeFileName()` al renombrar, reemplazando caracteres especiales (no espacios) por guiones bajos.
+* **Solución**:
+  - Nueva función `resolveDocumentName()` en [`supabase/functions/sync-desktop-report/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/sync-desktop-report/index.ts): prioriza campos `filename` / `displayName` / `name` del FormData, sin sanitizar espacios.
+  - El renombrado desde el dashboard ya no pasa por `sanitizeFileName()`; envía el nombre tal cual a `rename-document`.
+  - Corregido bug de email en notificación Resend (`user.email` indefinido → consulta perfil del operador).
+
+---
+
+## 11. Bug #11: Error al renombrar reportes en estado `CERRADO POR BALANZA` (`Object not found`)
+* **Síntoma**: Al renombrar un reporte **Cerrado por Balanza**, aparecía *"Error al renombrar: Fallo al renombrar archivo en storage: Object not found"*.
+* **Causa Raíz**:
+  - Tras cerrar por Balanza, `compile-and-sign-pdf` actualiza `file_link` al PDF firmado en `final-reports` (`signed-xxx.pdf`).
+  - `rename-document` solo trataba `HECHO` como archivo en `final-reports`; para `CERRADO POR BALANZA` intentaba mover la URL completa en `raw-reports`, donde el archivo no existe.
+* **Solución**:
+  - En [`supabase/functions/rename-document/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/rename-document/index.ts), estados `HECHO` y **`CERRADO POR BALANZA`** comparten la lógica de bucket `final-reports`.
+  - Nueva función `extractStoragePath()` para parsear rutas relativas y URLs públicas de Supabase.
+  - El PDF crudo en `raw-reports` **no se modifica** al renombrar documentos cerrados (regla anticorrupción).
+  - Se registra traza `RENAME` en `audit_documents`.

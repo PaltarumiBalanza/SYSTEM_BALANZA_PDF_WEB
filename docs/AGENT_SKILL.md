@@ -9,6 +9,7 @@ Este documento sirve como manual de referencia y "skill" para cualquier agente d
 Familiarízate con la distribución del código antes de proponer cambios:
 
 *   [`/src/app`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/app): Rutas de Next.js (App Router). Contiene el flujo de pantallas (`login`, `dashboard`, `editor/[id]`).
+*   [`/src/components/dashboard`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/components/dashboard): Vista compartida de paneles PSAC/ECOGOLD (`DashboardView.tsx`).
 *   [`/src/components/ui`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/components/ui): Componentes UI compartidos (`Modal.tsx`, `PdfPageCanvas.tsx`).
 *   [`/Database`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Database): Esquemas de base de datos PostgreSQL/Supabase ([`Esquema.db`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/Database/Esquema.db)) e historial de consultas de referencia.
 *   [`/supabase/functions`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions): Funciones Serverless de Supabase (Deno/Edge Functions) estructuradas en subcarpetas según demanda del CLI.
@@ -30,6 +31,7 @@ Familiarízate con la distribución del código antes de proponer cambios:
 ### 2.2 Convenciones de Código
 *   **TypeScript Estricto**: Define interfaces claras para todas las respuestas de API y estados locales (ver por ejemplo `PageItem` en el editor).
 *   **Manipulación de PDFs**: La manipulación de PDFs en el cliente se realiza leyendo el archivo como `ArrayBuffer` y pasándolo a `pdfjs-dist` para el renderizado local de miniaturas en `<canvas>`.
+*   **Nomenclatura de archivos**: No sanitizar nombres a guiones bajos en subidas ni renombrados del dashboard. Preservar espacios (ej: `34 pato.pdf`). La sanitización agresiva solo aplica a anexos locales en el editor (`sanitizeFileName` en anexos).
 
 ---
 
@@ -37,30 +39,26 @@ Familiarízate con la distribución del código antes de proponer cambios:
 
 Sigue estos procedimientos paso a paso al recibir peticiones sobre este proyecto:
 
-### Receta A: Conexión del Frontend con Supabase Client
+### Receta A: Consultar reportes en Dashboard (PSAC / ECOGOLD)
 
-Cuando se solicite conectar el dashboard o editor a la base de datos real en lugar de datos simulados (mock data):
+El dashboard ya está conectado a Supabase vía [`DashboardView.tsx`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/components/dashboard/DashboardView.tsx):
 
-1.  **Instalar dependencia**:
-    ```bash
-    npm install @supabase/supabase-js
-    ```
-2.  **Configurar cliente Supabase**: Crear un archivo `src/lib/supabaseClient.ts`:
-    ```typescript
-    import { createClient } from '@supabase/supabase-js';
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-    export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-    ```
-3.  **Reemplazar Mock Data**: En [`src/app/dashboard/page.tsx`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/src/app/dashboard/page.tsx), reemplaza `MOCK_DATA` por una consulta con `useEffect` o Server Actions:
-    ```typescript
-    const fetchDocuments = async () => {
-        const { data, error } = await supabase
-            .from('documents')
-            .select('*, users(first_name, last_name)');
-        if (!error) setReports(data);
-    };
-    ```
+```typescript
+// Documentos por empresa
+const { data } = await supabase
+    .from('documents')
+    .select('id, name, status, creation_date, region, company, file_link, users:users!user_id(first_name, last_name)')
+    .eq('company', 'PSAC') // o 'ECOGOLD'
+    .order('id', { ascending: false });
+
+// Última modificación por (batch)
+const { data: auditData } = await supabase
+    .from('audit_documents')
+    .select('document_id, modification_date, users(first_name, last_name)')
+    .in('document_id', docIds)
+    .order('modification_date', { ascending: false });
+// Tomar la primera entrada por document_id
+```
 
 ### Receta B: Conexión de Autenticación de Usuarios
 
@@ -100,3 +98,22 @@ Cuando el supervisor guarde los cambios en [`src/app/editor/[id]/page.tsx`](file
         .upload(`report_${reportId}.pdf`, pdfBlob, { upsert: true });
     ```
 3.  Actualiza el registro en la tabla `documents` con la URL del archivo y cambia el estado a `HECHO`.
+
+### Receta E: Subida desde Software de Escritorio (`sync-desktop-report`)
+
+1.  Enviar `POST` multipart a `/functions/v1/sync-desktop-report` con cabecera `Authorization: Bearer <JWT>`.
+2.  Campos del FormData:
+    *   `file` — Blob PDF (requerido).
+    *   `filename` — Nombre visible deseado (recomendado, ej: `34 pato.pdf`).
+    *   `region`, `company` / `empresa` — Metadatos.
+3.  La función `resolveDocumentName()` preserva espacios; **no** convierte a guiones bajos.
+4.  Desplegar tras cambios: `supabase functions deploy sync-desktop-report`.
+
+### Receta F: Renombrar documentos (`rename-document`)
+
+1.  Invocar desde el dashboard con `POST` a `/functions/v1/rename-document` y body `{ documentId, newName }`.
+2.  Reglas de bucket:
+    *   `PENDIENTE` / `OBSERVADO` / `ERROR` → renombra en `raw-reports`.
+    *   `CERRADO POR BALANZA` / `HECHO` → renombra en `final-reports` (PDF firmado).
+3.  **Nunca** mover el PDF crudo al renombrar estados cerrados.
+4.  Desplegar tras cambios: `supabase functions deploy rename-document`.

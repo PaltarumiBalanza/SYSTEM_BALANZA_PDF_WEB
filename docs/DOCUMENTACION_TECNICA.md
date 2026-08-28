@@ -9,8 +9,8 @@ Este documento detalla la arquitectura técnica, la estructura de la base de dat
 El sistema está estructurado como una aplicación moderna de dos capas principales (Frontend y Backend) utilizando tecnologías web de alto rendimiento.
 
 *   **Frontend**: Next.js (App Router) con TypeScript, estilado con CSS Modules nativos (Vanilla CSS) para maximizar la velocidad de carga y flexibilidad estética.
-*   **Backend (Planificado)**: Supabase, el cual proveerá la Base de Datos PostgreSQL, Autenticación de Usuarios, Almacenamiento de Archivos (Bucket de PDFs) y Funciones Serverless (Edge Functions) ejecutadas en Deno.
-*   **Estado de Integración**: Actualmente el proyecto se encuentra en fase de **Prototipado High-Fidelity Frontend**. Toda la lógica de autenticación, comentarios, trazabilidad y datos está mockeada en el cliente. La estructura del backend está pre-diseñada y documentada en los directorios `Database` y `Functions` para su posterior implementación física en Supabase.
+*   **Backend**: Supabase — PostgreSQL, Autenticación, Storage (buckets `raw-reports`, `final-reports`, `annex-attachments`) y Edge Functions en Deno.
+*   **Estado de Integración**: El frontend está **conectado a Supabase** (autenticación, documentos, trazabilidad, storage). Los paneles PSAC/ECOGOLD, el editor y las Edge Functions operan contra la base de datos y storage reales.
 
 ---
 
@@ -40,7 +40,7 @@ Almacena los metadatos de los reportes PDF.
 *   `name` (VARCHAR): Nombre del archivo PDF (conserva espacios reales, ej: `01-E6080 oro negro compania minera s.a.c.pdf`).
 *   `creation_date` (TIMESTAMP): Fecha de carga.
 *   `encargado_cierre` (INTEGER / UUID, FK -> `users.id`): Supervisor o balanza que cerró/firmó el documento.
-*   `file_link` (TEXT): Enlace o ruta del archivo físico almacenado en Supabase Storage (`raw-reports` para borradores, `final-reports` para compilados).
+*   `file_link` (TEXT): Enlace o ruta del archivo físico almacenado en Supabase Storage (`raw-reports` para borradores, `final-reports` para compilados firmados en estados `CERRADO POR BALANZA` y `HECHO`).
 *   `status` (VARCHAR): Estado del reporte:
     *   `PENDIENTE`: Creado y en revisión.
     *   `CERRADO POR BALANZA`: Revisado y cerrado por el área de Balanza (listo para aprobación comercial).
@@ -61,8 +61,16 @@ Historial de trazabilidad de cambios en los reportes.
 *   `id` (SERIAL, PK): Identificador único de auditoría.
 *   `document_id` (INTEGER, FK -> `documents.id`).
 *   `user_id` (INTEGER, FK -> `users.id`): Quién realizó el cambio.
-*   `action` (VARCHAR): Acción realizada (`CREATE`, `UPDATE`, `DELETE`, `CLOSE`).
+*   `action` (VARCHAR): Acción realizada. Valores registrados:
+    *   `CREATE` — Subida desde software de escritorio.
+    *   `UPDATE` — Guardado de borrador en editor.
+    *   `CLOSE_BALANZA` — Cierre y firma por Balanza.
+    *   `CLOSE` — Aprobación comercial (estado `HECHO`).
+    *   `OBSERVED`, `ERROR_MARKED` — Cambios de estado.
+    *   `RENAME: <anterior> -> <nuevo>` — Renombrado desde el dashboard.
 *   `modification_date` (TIMESTAMP): Fecha de la acción.
+
+> **Uso en Dashboard**: La columna **Última modificación por** en los paneles PSAC/ECOGOLD obtiene el usuario de la entrada más reciente en `audit_documents` por `document_id` (consulta batch). Si no hay trazas, se usa el operador original (`user_id`).
 
 ---
 
@@ -79,7 +87,8 @@ src/
 │   │   ├── settings/         # Configuración del sistema
 │   │   ├── users/            # Gestión de usuarios
 │   │   ├── layout.tsx        # Layout con menú lateral (Sidebar) de Paltarumi
-│   │   ├── page.tsx          # Panel de control: buscador, filtros y tabla de reportes
+│   │   ├── page.tsx          # Panel PSAC (delega a DashboardView)
+│   │   ├── ecogold/          # Panel ECOGOLD (misma vista, otra empresa)
 │   │   └── dashboard.module.css
 │   ├── editor/
 │   │   └── [id]/
@@ -91,18 +100,21 @@ src/
 │   ├── globals.css           # Variables de diseño (Colores Paltarumi, tipografía)
 │   ├── layout.tsx            # Contenedor raíz de la aplicación
 │   └── page.tsx              # Redirección inicial a /login
-└── components/
-    └── ui/
-        ├── Modal.tsx         # Ventanas emergentes (Trazabilidad y Comentarios)
-        ├── Modal.module.css
-        └── PdfPageCanvas.tsx # Renderizador de miniaturas de páginas PDF con pdfjs-dist
+├── components/
+│   ├── dashboard/
+│   │   └── DashboardView.tsx # Tabla de reportes PSAC/ECOGOLD (filtros, renombrado, trazabilidad)
+│   └── ui/
+│       ├── Modal.tsx         # Ventanas emergentes (Trazabilidad y Comentarios)
+│       ├── Modal.module.css
+│       └── PdfPageCanvas.tsx # Renderizador de miniaturas de páginas PDF con pdfjs-dist
 ```
 
 ### Componentes UI y Autenticación Clave:
-1.  **`AuthListener` (`src/components/auth/AuthListener.tsx`)**: Monitorea de forma continua la validez de la sesión y expiración del JWT token de Supabase. Soporta configuración de tokens de 6 horas (`jwt_expiry = 21600`) con `autoRefreshToken: true`. Al detectar caducidad o desconexión por inactividad, despliega automáticamente un modal explicativo ("Inicio de Sesión Caducado") y redirige al usuario a `/login`.
-2.  **`AlertModal` (`src/components/ui/Modal.tsx`)**: Modal de notificación estilizado con modo oscuro corporativo e iconos dinámicos (`CheckCircle` / `AlertCircle`) que reemplaza los cuadros de alerta nativos del navegador (`alert()`).
-3.  **`PdfPageCanvas`**: Utiliza la librería cliente `pdfjs-dist` para leer el buffer binario del PDF (`ArrayBuffer`) y renderizar en tiempo real una miniatura de la página específica en un elemento HTML `<canvas>`.
-4.  **`EditorPage` (`src/app/editor/[id]/page.tsx`)**:
+1.  **`DashboardView` (`src/components/dashboard/DashboardView.tsx`)**: Vista compartida de los paneles PSAC y ECOGOLD. Lista reportes filtrados por empresa, permite búsqueda, ordenación, renombrado y acceso al editor. La columna **Última modificación por** se resuelve consultando la traza más reciente en `audit_documents`.
+2.  **`AuthListener` (`src/components/auth/AuthListener.tsx`)**: Monitorea de forma continua la validez de la sesión y expiración del JWT token de Supabase. Soporta configuración de tokens de 6 horas (`jwt_expiry = 21600`) con `autoRefreshToken: true`. Al detectar caducidad o desconexión por inactividad, despliega automáticamente un modal explicativo ("Inicio de Sesión Caducado") y redirige al usuario a `/login`.
+3.  **`AlertModal` (`src/components/ui/Modal.tsx`)**: Modal de notificación estilizado con modo oscuro corporativo e iconos dinámicos (`CheckCircle` / `AlertCircle`) que reemplaza los cuadros de alerta nativos del navegador (`alert()`).
+4.  **`PdfPageCanvas`**: Utiliza la librería cliente `pdfjs-dist` para leer el buffer binario del PDF (`ArrayBuffer`) y renderizar en tiempo real una miniatura de la página específica en un elemento HTML `<canvas>`.
+5.  **`EditorPage` (`src/app/editor/[id]/page.tsx`)**:
     *   **Prevención de Duplicación y Corrupción de Archivos**: Garantiza que al corregir o re-cerrar reportes en estado `ERROR` u `OBSERVADO`, las páginas del documento base carguen **estrictamente desde el PDF crudo original en `raw-reports`**, evitando encimar firmas sobre archivos compilados en `final-reports`.
     *   **Drag & Drop (Exclusivo Balanza/Admin)**: Permite el reordenamiento visual de las páginas del PDF únicamente para roles autorizados. Deshabilitado para el área Comercial.
     *   **Concatenación**: Permite a Balanza/Admin cargar archivos PDF externos locales y agregarlos al flujo.
@@ -115,8 +127,20 @@ Las funciones del backend se desarrollan como Supabase Edge Functions escritas e
 *   **Estructura de Directorio**: Deben alojarse bajo la ruta estándar de la CLI: `supabase/functions/<nombre_de_funcion>/index.ts`.
 *   **Funciones Implementadas**:
     *   [`supabase/functions/create-user/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/create-user/index.ts): Gestiona la creación administrativa de usuarios en Supabase Auth y base de datos con manejo de respuestas HTTP 400 y mensajes de error descriptivos en español (correos duplicados, contraseñas cortas).
-    *   [`supabase/functions/sync-desktop-report/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/sync-desktop-report/index.ts): Gestiona la sincronización automática de reportes preliminares subidos desde el software de escritorio, su registro en base de datos y alertas por email mediante Resend.
+    *   [`supabase/functions/sync-desktop-report/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/sync-desktop-report/index.ts): Recibe PDFs del software de escritorio vía `multipart/form-data`. Preserva el nombre original del archivo (espacios incluidos) mediante `resolveDocumentName()`. Prioridad del nombre: campos `filename` / `displayName` / `name` del FormData → fallback a `file.name`. Almacena en `raw-reports` como `{timestamp}-{nombre}` y registra `documents.name` sin sanitizar a guiones bajos.
     *   [`supabase/functions/compile-and-sign-pdf/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/compile-and-sign-pdf/index.ts): Recibe el flujo ordenado de páginas, las concatena y extrae con `pdf-lib`, estampa la firma/sello de Balanza y guarda el PDF final en `final-reports`. Soporta recuperación fallback dual (`raw-reports` ↔ `final-reports`).
+    *   [`supabase/functions/rename-document/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/rename-document/index.ts): Renombra reportes desde el dashboard. Estados `PENDIENTE`/`OBSERVADO`/`ERROR` operan sobre `raw-reports`; estados `HECHO` y **`CERRADO POR BALANZA`** operan sobre `final-reports` (PDF firmado). Usa `extractStoragePath()` para parsear URLs públicas. **No modifica** el PDF crudo en `raw-reports` al renombrar documentos cerrados. Registra traza `RENAME` en `audit_documents`.
+    *   [`supabase/functions/desktop-login/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/desktop-login/index.ts): Autenticación del cliente de escritorio.
+    *   [`supabase/functions/get-customers/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/get-customers/index.ts): API de clientes.
+
+### 4.1 Protocolo de Renombrado Seguro (Anti-Corrupción)
+
+| Estado del documento | Bucket afectado | PDF crudo en `raw-reports` |
+| :--- | :--- | :--- |
+| `PENDIENTE`, `OBSERVADO`, `ERROR` | `raw-reports` | Se mueve/renombra |
+| `CERRADO POR BALANZA`, `HECHO` | `final-reports` | **No se toca** |
+
+El renombrado desde el dashboard envía el nombre tal cual (sin convertir espacios a guiones bajos). La Edge Function añade `.pdf` si falta la extensión.
 
 ---
 

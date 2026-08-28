@@ -24,8 +24,12 @@ Sistema web centralizado para la recepción, edición visual, auditoría, aproba
   - `ERROR`: Invalidado por falla de consistencia.
 - **Módulo de Auditoría**:
   - Trazabilidad completa por documento y por usuario.
+  - Columna **Última modificación por** en paneles PSAC/ECOGOLD (derivada de `audit_documents`).
   - Descarga masiva comprimida en paquete ZIP con filtros por estado, empresa y región.
   - Métricas de control y logs de actividad.
+- **Nomenclatura de Archivos**:
+  - Preservación de nombres originales del software de escritorio (espacios incluidos, ej: `34 pato.pdf`).
+  - Renombrado seguro en todos los estados, incluido `CERRADO POR BALANZA`.
 
 ---
 
