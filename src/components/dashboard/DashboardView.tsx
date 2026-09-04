@@ -416,6 +416,7 @@ export function DashboardView({ company }: DashboardViewProps) {
                                                     value={tempName}
                                                     onChange={(e) => setTempName(e.target.value)}
                                                     disabled={renamingId === row.id}
+                                                    maxLength={195}
                                                     style={{
                                                         backgroundColor: 'var(--background)',
                                                         border: '1px solid var(--border)',

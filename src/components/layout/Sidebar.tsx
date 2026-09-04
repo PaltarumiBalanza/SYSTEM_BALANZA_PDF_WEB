@@ -41,6 +41,8 @@ export function Sidebar({ isOpen }: { isOpen: boolean }) {
         { href: '/dashboard/customers', label: 'Customers', icon: Briefcase },
         ...(role === 'ADMIN' || role === 'EDITOR' ? [
             { href: '/dashboard/audit', label: 'Auditoría', icon: ClipboardCheck }
+        ] : role === 'VIEWER' ? [
+            { href: '/dashboard/audit', label: 'Descarga Masiva', icon: ClipboardCheck }
         ] : []),
         ...(role === 'ADMIN' ? [
             { href: '/dashboard/users', label: 'Usuarios', icon: Users }

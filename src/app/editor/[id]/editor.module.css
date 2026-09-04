@@ -4,6 +4,100 @@
     background-color: var(--background);
 }
 
+/* Widget flotante de zoom — visible solo en modo Lector, no ocupa espacio en el layout */
+.zoomPanel {
+    position: fixed;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(15, 23, 42, 0.92);
+    border: 2px solid #d97706;
+    border-radius: 14px;
+    padding: 1rem 0.5rem;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(217,119,6,0.2);
+    backdrop-filter: blur(8px);
+    width: 64px;
+}
+
+.zoomPanel .zoomLabel {
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #d97706;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+    margin-bottom: 0.5rem;
+}
+
+.zoomPanel .zoomBtn {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    border: 2px solid rgba(217, 119, 6, 0.4);
+    background: rgba(217, 119, 6, 0.08);
+    color: #d97706;
+    font-size: 1.4rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    line-height: 1;
+}
+
+.zoomPanel .zoomBtn:hover:not(:disabled) {
+    background: rgba(217, 119, 6, 0.2);
+    border-color: #d97706;
+    transform: scale(1.05);
+}
+
+.zoomPanel .zoomBtn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.zoomPanel .zoomPercent {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #d97706;
+    min-width: 52px;
+    text-align: center;
+    background: rgba(217, 119, 6, 0.08);
+    border: 1px solid rgba(217, 119, 6, 0.3);
+    border-radius: 6px;
+    padding: 0.35rem 0.25rem;
+}
+
+.zoomPanel .zoomReset {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: rgba(217, 119, 6, 0.7);
+    background: transparent;
+    border: 1px solid rgba(217, 119, 6, 0.25);
+    border-radius: 6px;
+    padding: 0.3rem 0.4rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    width: 52px;
+    text-align: center;
+}
+
+.zoomPanel .zoomReset:hover {
+    background: rgba(217, 119, 6, 0.12);
+    color: #d97706;
+    border-color: rgba(217, 119, 6, 0.5);
+}
+
 .leftPanel {
     flex: 1;
     display: flex;

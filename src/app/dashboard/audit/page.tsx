@@ -30,6 +30,8 @@ export default function AuditPage() {
     const [bulkStatusFilter, setBulkStatusFilter] = useState('ALL');
     const [bulkRegionFilter, setBulkRegionFilter] = useState('ALL');
     const [bulkSearch, setBulkSearch] = useState('');
+    const [bulkDateFrom, setBulkDateFrom] = useState('');
+    const [bulkDateTo, setBulkDateTo] = useState('');
 
     // Estados para Métricas
     const [metricsUsers, setMetricsUsers] = useState<any[]>([]);
@@ -185,12 +187,23 @@ export default function AuditPage() {
 
     const getFilteredBulkDocs = () => {
         return bulkDocs.filter(d => {
-
-
             const matchesCompany = bulkCompanyFilter === 'ALL' || d.company === bulkCompanyFilter;
             const matchesStatus = bulkStatusFilter === 'ALL' || d.status === bulkStatusFilter;
             const matchesRegion = bulkRegionFilter === 'ALL' || d.region === bulkRegionFilter;
-            
+
+            // Filtro de rango de fechas
+            let matchesDate = true;
+            if (bulkDateFrom || bulkDateTo) {
+                const rawDate = d.creation_date;
+                if (rawDate) {
+                    const docDateStr = rawDate.split('T')[0]; // 'YYYY-MM-DD'
+                    if (bulkDateFrom && docDateStr < bulkDateFrom) matchesDate = false;
+                    if (bulkDateTo && docDateStr > bulkDateTo) matchesDate = false;
+                } else {
+                    matchesDate = false;
+                }
+            }
+
             const creatorFull = d.users ? `${d.users.first_name} ${d.users.last_name || ''}`.toLowerCase() : 'sistema';
             const query = bulkSearch.toLowerCase();
             const matchesSearch = query === '' || 
@@ -198,7 +211,7 @@ export default function AuditPage() {
                                   creatorFull.includes(query) || 
                                   String(d.id).includes(query);
 
-            return matchesCompany && matchesStatus && matchesRegion && matchesSearch;
+            return matchesCompany && matchesStatus && matchesRegion && matchesDate && matchesSearch;
         });
     };
 
@@ -417,6 +430,43 @@ export default function AuditPage() {
                                 ))}
                             </select>
                         </div>
+
+                        {/* Rango de fechas */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Fecha Desde</label>
+                            <input
+                                type="date"
+                                value={bulkDateFrom}
+                                onChange={(e) => setBulkDateFrom(e.target.value)}
+                                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.6rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem', colorScheme: 'dark' }}
+                            />
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Fecha Hasta</label>
+                            <input
+                                type="date"
+                                value={bulkDateTo}
+                                onChange={(e) => setBulkDateTo(e.target.value)}
+                                min={bulkDateFrom || undefined}
+                                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.6rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem', colorScheme: 'dark' }}
+                            />
+                        </div>
+
+                        {(bulkDateFrom || bulkDateTo) && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                <label style={{ fontSize: '0.75rem', color: 'transparent' }}>_</label>
+                                <button
+                                    onClick={() => { setBulkDateFrom(''); setBulkDateTo(''); }}
+                                    style={{ backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.2s' }}
+                                    onMouseOver={(e) => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.style.color = '#ef4444'; }}
+                                    onMouseOut={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                                    title="Limpiar filtro de fechas"
+                                >
+                                    ✕ Limpiar fechas
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -914,7 +964,7 @@ export default function AuditPage() {
                     .eq('user_id', user.id)
                     .single() as any;
 
-                if (!error && (data?.roles?.name === 'ADMIN' || data?.roles?.name === 'EDITOR')) {
+                if (!error && (data?.roles?.name === 'ADMIN' || data?.roles?.name === 'EDITOR' || data?.roles?.name === 'VIEWER')) {
                     setIsAuthorized(true);
                     setCurrentUserRole(data.roles.name);
                     await fetchAuditLogs();
@@ -979,9 +1029,10 @@ export default function AuditPage() {
             let downloadedAny = false;
             for (const doc of data) {
                 if (currentUserRole === 'EDITOR' && doc.status !== 'CERRADO' && doc.status !== 'CERRADO POR BALANZA') {
-                    console.warn(`Descarga bloqueada para el reporte #${doc.id} por no estar en estado Cerrado por Balanza.`);
+                    console.warn(`Descarga bloqueada para el reporte #${doc.id} por no estar en estado Cerrado por Balanza (rol Comercial).`);
                     continue;
                 }
+                // VIEWER (Balanza): sin restricción de estado, puede descargar todos
                 if (!doc.file_link) continue;
 
                 try {
@@ -1220,8 +1271,14 @@ export default function AuditPage() {
         <div className={styles.container}>
             <div className={styles.header}>
                 <div>
-                    <h1 className={styles.title}>Auditoría General</h1>
-                    <p className={styles.subtitle}>Supervisión de integridad de datos y actividad del sistema.</p>
+                    <h1 className={styles.title}>
+                        {currentUserRole === 'VIEWER' ? 'Descarga Masiva de Reportes' : 'Auditoría General'}
+                    </h1>
+                    <p className={styles.subtitle}>
+                        {currentUserRole === 'VIEWER'
+                            ? 'Descarga todos los reportes de balanza en cualquier estado.'
+                            : 'Supervisión de integridad de datos y actividad del sistema.'}
+                    </p>
                 </div>
             </div>
 
@@ -1234,7 +1291,9 @@ export default function AuditPage() {
                 </div>
             ) : (
                 <Tabs tabs={
-                    currentUserRole === 'EDITOR' ? [
+                    currentUserRole === 'VIEWER' ? [
+                        { id: 'descargas', label: 'Descarga Masiva', content: BulkDownloadView() }
+                    ] : currentUserRole === 'EDITOR' ? [
                         { id: 'descargas', label: 'Descarga Masiva', content: BulkDownloadView() }
                     ] : [
                         { id: 'users', label: 'Trazabilidad de Usuarios', content: UserTraceView() },

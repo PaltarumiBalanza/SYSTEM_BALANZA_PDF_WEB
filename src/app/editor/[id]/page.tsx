@@ -991,6 +991,37 @@ export default function EditorPage() {
                 multiple
             />
 
+            {/* Panel lateral de zoom — solo visible en modo Lector */}
+            {layoutMode === 'reader' && (
+                <div className={styles.zoomPanel}>
+                    <span className={styles.zoomLabel}>Zoom</span>
+                    <button
+                        className={styles.zoomBtn}
+                        onClick={() => setReaderZoom(prev => Math.min(240, prev + 20))}
+                        disabled={readerZoom >= 240}
+                        title={`Aumentar zoom (máx. 240%)`}
+                    >
+                        +
+                    </button>
+                    <span className={styles.zoomPercent}>{readerZoom}%</span>
+                    <button
+                        className={styles.zoomBtn}
+                        onClick={() => setReaderZoom(prev => Math.max(80, prev - 20))}
+                        disabled={readerZoom <= 80}
+                        title={`Reducir zoom (mín. 80%)`}
+                    >
+                        −
+                    </button>
+                    <button
+                        className={styles.zoomReset}
+                        onClick={() => setReaderZoom(100)}
+                        title="Restablecer zoom al 100%"
+                    >
+                        Reset
+                    </button>
+                </div>
+            )}
+
             <div className={styles.leftPanel}>
                 <div className={styles.pdfHeader}>
                     {isEditingName ? (
@@ -1004,6 +1035,7 @@ export default function EditorPage() {
                                 value={tempName}
                                 onChange={(e) => setTempName(e.target.value)}
                                 disabled={renaming}
+                                maxLength={195}
                                 style={{
                                     backgroundColor: 'var(--background)',
                                     border: '1px solid var(--border)',
@@ -1120,85 +1152,6 @@ export default function EditorPage() {
                             <Paperclip size={48} color="var(--primary)" style={{ animation: 'bounce 1s infinite' }} />
                             <span style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>Suelte los archivos aquí</span>
                             <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>Se cargarán y anexarán automáticamente al final del reporte</span>
-                        </div>
-                    )}
-
-                    {layoutMode === 'reader' && (
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '1rem',
-                            background: 'var(--surface)',
-                            borderBottom: '1px solid var(--border)',
-                            padding: '0.6rem 1rem',
-                            position: 'sticky',
-                            top: 0,
-                            zIndex: 100,
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-                        }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                                Zoom de Lectura:
-                            </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <button 
-                                    onClick={() => setReaderZoom(prev => Math.max(80, prev - 20))}
-                                    disabled={readerZoom <= 80}
-                                    style={{
-                                        background: 'var(--background)',
-                                        border: '1px solid var(--border)',
-                                        color: 'var(--text-primary)',
-                                        width: '28px',
-                                        height: '28px',
-                                        borderRadius: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold',
-                                        opacity: readerZoom <= 80 ? 0.4 : 1
-                                    }}
-                                >
-                                    -
-                                </button>
-                                <span style={{ fontSize: '0.85rem', fontWeight: 700, minWidth: '45px', textAlign: 'center' }}>
-                                    {readerZoom}%
-                                </span>
-                                <button 
-                                    onClick={() => setReaderZoom(prev => Math.min(240, prev + 20))}
-                                    disabled={readerZoom >= 240}
-                                    style={{
-                                        background: 'var(--background)',
-                                        border: '1px solid var(--border)',
-                                        color: 'var(--text-primary)',
-                                        width: '28px',
-                                        height: '28px',
-                                        borderRadius: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold',
-                                        opacity: readerZoom >= 240 ? 0.4 : 1
-                                    }}
-                                >
-                                    +
-                                </button>
-                            </div>
-                            <button
-                                onClick={() => setReaderZoom(100)}
-                                style={{
-                                    background: 'transparent',
-                                    border: '1px solid var(--border)',
-                                    color: 'var(--text-secondary)',
-                                    padding: '0.2rem 0.5rem',
-                                    borderRadius: '4px',
-                                    fontSize: '0.7rem',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Restablecer
-                            </button>
                         </div>
                     )}
 
