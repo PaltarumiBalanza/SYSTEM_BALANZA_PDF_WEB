@@ -32,6 +32,78 @@ export default function AuditPage() {
     const [bulkSearch, setBulkSearch] = useState('');
     const [bulkDateFrom, setBulkDateFrom] = useState('');
     const [bulkDateTo, setBulkDateTo] = useState('');
+    const [bulkDateTypeFilter, setBulkDateTypeFilter] = useState<'AUTO' | 'CREATION' | 'LAST_MODIFIED'>('AUTO');
+
+    // Helper para obtener YYYY-MM-DD en zona horaria America/Lima
+    const getLimaDateString = (isoDateStr: string | null | undefined): string => {
+        if (!isoDateStr) return '';
+        try {
+            const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(isoDateStr);
+            const cleanStr = isoDateStr.includes('T') ? isoDateStr : isoDateStr.replace(' ', 'T');
+            const finalStr = hasTz ? cleanStr : `${cleanStr}Z`;
+            const d = new Date(finalStr);
+            if (isNaN(d.getTime())) return '';
+            const formatter = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Lima',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            });
+            return formatter.format(d);
+        } catch {
+            return '';
+        }
+    };
+
+    // Helper para formatear fecha completa en hora de Lima
+    const formatLimaDateTime = (isoDateStr: string | null | undefined): string => {
+        if (!isoDateStr) return 'N/A';
+        try {
+            const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(isoDateStr);
+            const cleanStr = isoDateStr.includes('T') ? isoDateStr : isoDateStr.replace(' ', 'T');
+            const finalStr = hasTz ? cleanStr : `${cleanStr}Z`;
+            const d = new Date(finalStr);
+            if (isNaN(d.getTime())) return 'N/A';
+            return d.toLocaleString('es-PE', {
+                timeZone: 'America/Lima',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch {
+            return 'N/A';
+        }
+    };
+
+    // Helper para obtener la fecha objetivo según el criterio seleccionado
+    const getDocTargetDate = (doc: any, dateType: string, statusFilter: string): { date: string; label: string } => {
+        if (dateType === 'CREATION') {
+            return { date: doc.creation_date, label: 'Carga' };
+        }
+        if (dateType === 'LAST_MODIFIED') {
+            return { date: doc.last_modification_date || doc.creation_date, label: 'Últ. Modificación' };
+        }
+        // Modo AUTO según estado
+        if (statusFilter === 'CERRADO POR BALANZA') {
+            return { date: doc.close_balanza_date || doc.status_event_date || doc.creation_date, label: 'Cierre Balanza' };
+        }
+        if (statusFilter === 'HECHO') {
+            return { date: doc.close_comercial_date || doc.status_event_date || doc.creation_date, label: 'Aprobado Comercial' };
+        }
+        if (statusFilter === 'OBSERVADO') {
+            return { date: doc.observed_date || doc.status_event_date || doc.creation_date, label: 'Marcado Observado' };
+        }
+        if (statusFilter === 'ERROR') {
+            return { date: doc.error_date || doc.status_event_date || doc.creation_date, label: 'Marcado Error' };
+        }
+        if (statusFilter === 'PENDIENTE') {
+            return { date: doc.creation_date, label: 'Carga' };
+        }
+        return { date: doc.status_event_date || doc.creation_date, label: doc.status_event_label || 'Fecha Estado' };
+    };
 
     // Estados para Métricas
     const [metricsUsers, setMetricsUsers] = useState<any[]>([]);
@@ -79,9 +151,11 @@ export default function AuditPage() {
                 let friendlyAction = 'Modificación';
                 if (t.action === 'CREATE') friendlyAction = 'Subida de Documento';
                 if (t.action === 'CLOSE') friendlyAction = 'Aprobación de PDF';
+                if (t.action === 'CLOSE_BALANZA') friendlyAction = 'Cierre por Balanza';
                 if (t.action === 'UPDATE') friendlyAction = 'Modificación de Hojas';
                 if (t.action === 'DELETE') friendlyAction = 'Eliminación de Reporte';
                 if (t.action === 'ERROR_MARKED') friendlyAction = 'Marcado como Error';
+                if (t.action === 'OBSERVED') friendlyAction = 'Marcado como Observado';
 
                 return {
                     id: t.id,
@@ -104,9 +178,11 @@ export default function AuditPage() {
                 let friendlyAction = 'Modificación';
                 if (t.action === 'CREATE') friendlyAction = 'Registro de Reporte';
                 if (t.action === 'CLOSE') friendlyAction = 'Aprobación Final';
+                if (t.action === 'CLOSE_BALANZA') friendlyAction = 'Cierre por Balanza';
                 if (t.action === 'UPDATE') friendlyAction = 'Páginas Modificadas';
                 if (t.action === 'DELETE') friendlyAction = 'Eliminación';
                 if (t.action === 'ERROR_MARKED') friendlyAction = 'Marcado con Error';
+                if (t.action === 'OBSERVED') friendlyAction = 'Marcado como Observado';
 
                 return {
                     id: String(t.document_id),
@@ -145,7 +221,83 @@ export default function AuditPage() {
                 .order('id', { ascending: false });
 
             if (error) throw error;
-            setBulkDocs(data || []);
+
+            const docs = data || [];
+            const docIds = docs.map((d: any) => d.id);
+
+            const auditMap: Record<number, {
+                close_balanza_date?: string;
+                close_comercial_date?: string;
+                observed_date?: string;
+                error_date?: string;
+                last_modification_date?: string;
+            }> = {};
+
+            if (docIds.length > 0) {
+                const { data: auditData, error: auditError } = await supabase
+                    .from('audit_documents')
+                    .select('document_id, action, modification_date')
+                    .in('document_id', docIds)
+                    .order('modification_date', { ascending: false });
+
+                if (!auditError && auditData) {
+                    for (const entry of auditData) {
+                        const docId = entry.document_id;
+                        if (!auditMap[docId]) {
+                            auditMap[docId] = {
+                                last_modification_date: entry.modification_date
+                            };
+                        }
+                        const current = auditMap[docId];
+                        if (entry.action === 'CLOSE_BALANZA' && !current.close_balanza_date) {
+                            current.close_balanza_date = entry.modification_date;
+                        } else if (entry.action === 'CLOSE' && !current.close_comercial_date) {
+                            current.close_comercial_date = entry.modification_date;
+                        } else if (entry.action === 'OBSERVED' && !current.observed_date) {
+                            current.observed_date = entry.modification_date;
+                        } else if (entry.action === 'ERROR_MARKED' && !current.error_date) {
+                            current.error_date = entry.modification_date;
+                        }
+                    }
+                }
+            }
+
+            const enrichedDocs = docs.map((doc: any) => {
+                const a = auditMap[doc.id] || {};
+                
+                let statusEventDate = doc.creation_date;
+                let statusEventLabel = 'Fecha de Carga';
+
+                if (doc.status === 'CERRADO POR BALANZA' || doc.status === 'CERRADO') {
+                    statusEventDate = a.close_balanza_date || a.last_modification_date || doc.creation_date;
+                    statusEventLabel = 'Cierre Balanza';
+                } else if (doc.status === 'HECHO') {
+                    statusEventDate = a.close_comercial_date || a.last_modification_date || doc.creation_date;
+                    statusEventLabel = 'Aprobado Comercial';
+                } else if (doc.status === 'OBSERVADO') {
+                    statusEventDate = a.observed_date || a.last_modification_date || doc.creation_date;
+                    statusEventLabel = 'Marcado Observado';
+                } else if (doc.status === 'ERROR') {
+                    statusEventDate = a.error_date || a.last_modification_date || doc.creation_date;
+                    statusEventLabel = 'Marcado con Error';
+                } else if (doc.status === 'PENDIENTE') {
+                    statusEventDate = doc.creation_date;
+                    statusEventLabel = 'Carga Inicial';
+                }
+
+                return {
+                    ...doc,
+                    close_balanza_date: a.close_balanza_date,
+                    close_comercial_date: a.close_comercial_date,
+                    observed_date: a.observed_date,
+                    error_date: a.error_date,
+                    last_modification_date: a.last_modification_date || doc.creation_date,
+                    status_event_date: statusEventDate,
+                    status_event_label: statusEventLabel
+                };
+            });
+
+            setBulkDocs(enrichedDocs);
         } catch (err) {
             console.error('Error fetching bulk documents:', err);
         }
@@ -191,12 +343,12 @@ export default function AuditPage() {
             const matchesStatus = bulkStatusFilter === 'ALL' || d.status === bulkStatusFilter;
             const matchesRegion = bulkRegionFilter === 'ALL' || d.region === bulkRegionFilter;
 
-            // Filtro de rango de fechas
+            // Filtro de rango de fechas dinámico según el criterio seleccionado
             let matchesDate = true;
             if (bulkDateFrom || bulkDateTo) {
-                const rawDate = d.creation_date;
-                if (rawDate) {
-                    const docDateStr = rawDate.split('T')[0]; // 'YYYY-MM-DD'
+                const target = getDocTargetDate(d, bulkDateTypeFilter, bulkStatusFilter);
+                const docDateStr = getLimaDateString(target.date);
+                if (docDateStr) {
                     if (bulkDateFrom && docDateStr < bulkDateFrom) matchesDate = false;
                     if (bulkDateTo && docDateStr > bulkDateTo) matchesDate = false;
                 } else {
@@ -413,6 +565,7 @@ export default function AuditPage() {
                                 <option value="PENDIENTE">Pendientes</option>
                                 <option value="CERRADO POR BALANZA">Cerrados Balanza</option>
                                 <option value="HECHO">Completados (Firmados)</option>
+                                <option value="OBSERVADO">Observados</option>
                                 <option value="ERROR">Con Errores</option>
                             </select>
                         </div>
@@ -428,6 +581,20 @@ export default function AuditPage() {
                                 {regions.map(r => (
                                     <option key={r} value={r}>{r}</option>
                                 ))}
+                            </select>
+                        </div>
+
+                        {/* Criterio de Fecha */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Criterio de Fecha</label>
+                            <select 
+                                value={bulkDateTypeFilter} 
+                                onChange={(e) => setBulkDateTypeFilter(e.target.value as any)}
+                                style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)', color: 'var(--text-primary)', padding: '0.4rem 0.8rem', borderRadius: '6px', outline: 'none', fontSize: '0.85rem' }}
+                            >
+                                <option value="AUTO">🎯 Automático (según estado)</option>
+                                <option value="CREATION">📥 Solo Fecha de Carga</option>
+                                <option value="LAST_MODIFIED">🕒 Última Modificación</option>
                             </select>
                         </div>
 
@@ -487,7 +654,13 @@ export default function AuditPage() {
                                 <th>Estado</th>
                                 <th>Región</th>
                                 <th>Operador</th>
-                                <th>Fecha Carga</th>
+                                <th>
+                                    {bulkDateTypeFilter === 'CREATION' 
+                                        ? 'Fecha Carga' 
+                                        : bulkDateTypeFilter === 'LAST_MODIFIED' 
+                                            ? 'Últ. Modificación' 
+                                            : 'Fecha Estado / Evento'}
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
@@ -501,20 +674,8 @@ export default function AuditPage() {
                                 filteredDocs.map(row => {
                                     const isSelected = selectedBulkIds.includes(row.id);
                                     
-                                    const rawDate = row.creation_date;
-                                    let formattedDate = 'N/A';
-                                    if (rawDate) {
-                                        const hasTz = /[Zz]|[+-]\d{2}:?\d{2}$/.test(rawDate);
-                                        const cleanStr = rawDate.includes('T') ? rawDate : rawDate.replace(' ', 'T');
-                                        const finalStr = hasTz ? cleanStr : `${cleanStr}Z`;
-                                        const parsed = new Date(finalStr);
-                                        formattedDate = isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString('es-PE', { 
-                                            timeZone: 'America/Lima',
-                                            day: '2-digit',
-                                            month: '2-digit',
-                                            year: 'numeric'
-                                        });
-                                    }
+                                    const target = getDocTargetDate(row, bulkDateTypeFilter, bulkStatusFilter);
+                                    const formattedDate = formatLimaDateTime(target.date);
 
                                     return (
                                         <tr key={row.id}>
@@ -546,7 +707,18 @@ export default function AuditPage() {
                                             </td>
                                             <td>{row.region || 'General'}</td>
                                             <td>{row.users ? `${row.users.first_name} ${row.users.last_name || ''}`.trim() : 'Sistema'}</td>
-                                            <td>{formattedDate}</td>
+                                            <td>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <span style={{ fontWeight: 600, fontSize: '0.825rem', color: 'var(--text-primary)' }}>
+                                                        {formattedDate}
+                                                    </span>
+                                                    {bulkDateTypeFilter === 'AUTO' && (
+                                                        <span style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 600 }}>
+                                                            {target.label}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
                                         </tr>
                                     );
                                 })
