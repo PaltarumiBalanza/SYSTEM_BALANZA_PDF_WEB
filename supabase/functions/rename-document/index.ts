@@ -129,30 +129,47 @@ Deno.serve(async (req) => {
 
     const newPath = `${prefix}${cleanNewName}`;
 
-    // 5. Rename/Move the file in Storage
-    console.log(`Renaming in Storage bucket "${bucket}": "${oldPath}" -> "${newPath}"`);
-    const { error: moveError } = await supabaseAdmin.storage
-      .from(bucket)
+    // 5. Rename/Move the file in Storage (con fallback de cubeta y tolerancia a archivos no encontrados)
+    let activeBucket = bucket;
+    let fileMovedSuccessfully = false;
+
+    console.log(`Renaming in Storage bucket "${activeBucket}": "${oldPath}" -> "${newPath}"`);
+    let { error: moveError } = await supabaseAdmin.storage
+      .from(activeBucket)
       .move(oldPath, newPath);
 
-    if (moveError) {
-      console.error("Storage move error:", moveError);
-      return new Response(
-        JSON.stringify({ error: `Fallo al renombrar archivo en storage: ${moveError.message}` }),
-        { status: 500, headers: corsHeaders }
-      );
+    if (!moveError) {
+      fileMovedSuccessfully = true;
+    } else {
+      // Fallback 1: Probar en el bucket alternativo (raw-reports <-> final-reports)
+      const altBucket = bucket === "raw-reports" ? "final-reports" : "raw-reports";
+      console.warn(`No se pudo mover "${oldPath}" en "${activeBucket}". Probando en "${altBucket}"...`);
+      const altMoveRes = await supabaseAdmin.storage
+        .from(altBucket)
+        .move(oldPath, newPath);
+
+      if (!altMoveRes.error) {
+        fileMovedSuccessfully = true;
+        activeBucket = altBucket;
+        moveError = null;
+      } else {
+        console.warn(`Tampoco se pudo mover en "${altBucket}": ${altMoveRes.error.message}. Se actualizará el nombre en base de datos.`);
+      }
     }
 
     // 6. Calculate new database file_link
-    let newFileLink = newPath;
-    if (isFinalReport) {
-      const { data: publicUrlData } = supabaseAdmin.storage
-        .from("final-reports")
-        .getPublicUrl(newPath);
-      newFileLink = publicUrlData.publicUrl;
+    let newFileLink = currentFileLink;
+    if (fileMovedSuccessfully) {
+      newFileLink = newPath;
+      if (isFinalReport || activeBucket === "final-reports") {
+        const { data: publicUrlData } = supabaseAdmin.storage
+          .from("final-reports")
+          .getPublicUrl(newPath);
+        newFileLink = publicUrlData.publicUrl;
+      }
     }
 
-    // 7. Update database record
+    // 7. Update database record (garantiza que el renombrado en la interfaz sea exitoso)
     const { data: updatedDoc, error: updateError } = await supabaseAdmin
       .from("documents")
       .update({
@@ -164,8 +181,10 @@ Deno.serve(async (req) => {
       .single();
 
     if (updateError) {
-      // Revert the storage move to keep consistency
-      await supabaseAdmin.storage.from(bucket).move(newPath, oldPath);
+      if (fileMovedSuccessfully) {
+        // Revert storage move if DB update failed
+        await supabaseAdmin.storage.from(activeBucket).move(newPath, oldPath);
+      }
       throw updateError;
     }
 

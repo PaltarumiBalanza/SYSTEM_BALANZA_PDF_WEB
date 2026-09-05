@@ -153,3 +153,16 @@ CHECK (status IN ('PENDIENTE', 'CERRADO POR BALANZA', 'OBSERVADO', 'HECHO', 'ERR
   - Nueva función `extractStoragePath()` para parsear rutas relativas y URLs públicas de Supabase.
   - El PDF crudo en `raw-reports` **no se modifica** al renombrar documentos cerrados (regla anticorrupción).
   - Se registra traza `RENAME` en `audit_documents`.
+
+---
+
+## 12. Bug #12: Error al renombrar reporte `clz-758_MINERA SAMI S.A.C.pdf` (`Object not found` en Storage move)
+* **Síntoma**: Al intentar renombrar el reporte `clz-758_MINERA SAMI S.A.C.pdf`, el sistema devolvía *"Fallo al renombrar archivo en storage: Object not found"*.
+* **Causa Raíz**:
+  - `rename-document` intentaba mover físicamente la clave binaria antigua (`oldPath`) en el bucket primario (`raw-reports`). Si la clave binaria no existía en `raw-reports` (o estaba en `final-reports` o con codificación diferente), la Edge Function devolvía un error HTTP 500 y cancelaba el renombrado en la base de datos PostgreSQL.
+* **Solución**:
+  - En [`supabase/functions/rename-document/index.ts`](file:///c:/Users/Hunter123_04/Desktop/PERSONAL/GIT/PROYECTOS%20GIT/SYSTEM_BALANZA_PDF_WEB/supabase/functions/rename-document/index.ts), se implementó un flujo de renombrado resiliente:
+    1. Probar mover el archivo en la cubeta principal (`raw-reports`).
+    2. Si no se encuentra, probar mover el archivo en la cubeta alternativa (`final-reports`).
+    3. Si el archivo binario no está disponible en Storage, **no falla ni bloquea al usuario**: registra una advertencia y actualiza el título del documento `name: cleanNewName` en la tabla SQL `public.documents`, permitiendo que el renombrado en la interfaz sea 100% exitoso.
+
