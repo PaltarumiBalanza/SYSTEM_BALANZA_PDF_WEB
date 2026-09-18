@@ -22,6 +22,20 @@ function extractStoragePath(fileLink: string, bucket: string): string {
 
 const FINAL_REPORT_STATUSES = new Set(["HECHO", "CERRADO POR BALANZA"]);
 
+/** Genera solo la parte interna de la clave de Storage; no altera el nombre visible. */
+function toStorageFileName(documentName: string): string {
+  const baseName = documentName.replace(/\.pdf$/i, "");
+  const safeBaseName = baseName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._ -]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "") || "reporte";
+
+  return `${safeBaseName}.pdf`;
+}
+
 Deno.serve(async (req) => {
   // CORS Preflight
   if (req.method === "OPTIONS") {
@@ -127,7 +141,8 @@ Deno.serve(async (req) => {
       prefix = match ? match[1] : "";
     }
 
-    const newPath = `${prefix}${cleanNewName}`;
+    // El nombre mostrado conserva caracteres como Ñ; la clave física usa ASCII seguro.
+    const newPath = `${prefix}${toStorageFileName(cleanNewName)}`;
 
     // 5. Rename/Move the file in Storage (con fallback de cubeta y tolerancia a archivos no encontrados)
     let activeBucket = bucket;

@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/** Preserva el nombre original del archivo (espacios, guiones, etc.) sin sanitizar a guiones bajos. */
+/** Conserva el nombre elegido por el operador para mostrarlo en la aplicación. */
 function resolveDocumentName(formData: FormData, file: File): string {
   const explicit =
     (formData.get("filename") as string | null) ||
@@ -16,6 +16,23 @@ function resolveDocumentName(formData: FormData, file: File): string {
   const raw = (explicit?.trim() || file.name || "").trim();
   if (!raw) return "reporte.pdf";
   return raw.toLowerCase().endsWith(".pdf") ? raw : `${raw}.pdf`;
+}
+
+/**
+ * Genera una clave interna compatible con Supabase Storage.
+ * El nombre visible original se guarda por separado en documents.name.
+ */
+function toStorageFileName(documentName: string): string {
+  const baseName = documentName.replace(/\.pdf$/i, "");
+  const safeBaseName = baseName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._ -]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[. ]+$/g, "") || "reporte";
+
+  return `${safeBaseName}.pdf`;
 }
 
 Deno.serve(async (req) => {
@@ -84,9 +101,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 3. Subir el PDF original al bucket "raw-reports" (nombre sin sanitizar)
+    // 3. Separar el nombre visible de la clave interna de Storage.
+    // Supabase rechaza caracteres Unicode como "Ñ" en la clave del objeto,
+    // pero documents.name conserva exactamente el nombre elegido por el operador.
     const documentName = resolveDocumentName(formData, file);
-    const fileName = `${Date.now()}-${documentName}`;
+    const storageFileName = toStorageFileName(documentName);
+    const fileName = `${Date.now()}-${storageFileName}`;
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from("raw-reports")
       .upload(fileName, file, {
