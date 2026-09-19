@@ -782,11 +782,9 @@ export default function EditorPage() {
             return;
         }
 
-        const cleanName = sanitizeFileName(tempName.trim());
-        if (!cleanName) {
-            alert('El nombre del archivo no es válido.');
-            return;
-        }
+        // El nombre visible se envía sin normalizar para conservar mayúsculas,
+        // acentos y la Ñ. La Edge Function genera por separado la clave segura de Storage.
+        const cleanName = tempName.trim();
 
         setRenaming(true);
         try {
