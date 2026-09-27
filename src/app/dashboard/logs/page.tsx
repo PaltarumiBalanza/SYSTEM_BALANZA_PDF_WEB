@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { User, FileText, CheckCircle, AlertTriangle, AlertCircle } from 'lucide-react';
 import styles from './logs.module.css';
 import { supabase } from '@/lib/supabaseClient';
+import { getAuditActionPresentation } from '@/lib/auditActions';
 
 export default function LogsPage() {
     const [logs, setLogs] = useState<any[]>([]);
@@ -37,27 +38,22 @@ export default function LogsPage() {
                         ? `${t.users.first_name} ${t.users.last_name || ''}`.trim()
                         : 'Sistema';
 
-                    let type = 'info';
-                    let icon = FileText;
-                    let actionDesc = 'modificó el reporte';
-
-                    if (t.action === 'CREATE') {
-                        type = 'info';
-                        icon = User;
-                        actionDesc = 'subió un nuevo reporte';
-                    } else if (t.action === 'CLOSE') {
-                        type = 'success';
-                        icon = CheckCircle;
-                        actionDesc = 'autorizó y firmó el reporte';
-                    } else if (t.action === 'ERROR_MARKED') {
-                        type = 'alert';
-                        icon = AlertCircle;
-                        actionDesc = 'marcó con error el reporte';
-                    } else if (t.action === 'DELETE') {
-                        type = 'alert';
-                        icon = AlertTriangle;
-                        actionDesc = 'eliminó el reporte';
-                    }
+                    const presentation = getAuditActionPresentation(t.action);
+                    const type = presentation.severity === 'danger'
+                        ? 'alert'
+                        : presentation.severity === 'warning'
+                            ? 'alert'
+                            : presentation.severity;
+                    const actionDesc = presentation.description;
+                    const icon = t.action === 'CREATE'
+                        ? User
+                        : presentation.severity === 'success'
+                            ? CheckCircle
+                            : presentation.severity === 'danger'
+                                ? AlertCircle
+                                : presentation.severity === 'warning'
+                                    ? AlertTriangle
+                                    : FileText;
 
                     const timeDiff = new Date().getTime() - new Date(t.modification_date).getTime();
                     const hoursDiff = Math.floor(timeDiff / (1000 * 60 * 60));

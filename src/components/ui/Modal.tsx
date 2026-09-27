@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, History, MessageSquare, User, Clock, AlertCircle, CheckCircle } from 'lucide-react';
 import styles from './Modal.module.css';
 import { supabase } from '@/lib/supabaseClient';
+import { getAuditActionPresentation } from '@/lib/auditActions';
 
 interface ModalProps {
     title: string;
@@ -68,11 +69,7 @@ export function TraceabilityContent({ reportId }: { reportId: string | number })
                 if (error) throw error;
 
                 const mapped = (data || []).map((t: any) => {
-                    let title = 'Acción registrada';
-                    if (t.action === 'CREATE') title = 'Reporte preliminar registrado';
-                    if (t.action === 'CLOSE') title = 'Reporte consolidado y firmado (HECHO)';
-                    if (t.action === 'UPDATE') title = 'Páginas modificadas en editor';
-                    if (t.action === 'DELETE') title = 'Reporte eliminado';
+                    const { label: title } = getAuditActionPresentation(t.action);
 
                     const userFull = t.users
                         ? [t.users.first_name, t.users.last_name].filter(Boolean).join(' ')

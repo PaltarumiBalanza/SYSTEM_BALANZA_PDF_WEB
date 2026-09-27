@@ -6,6 +6,7 @@ import { Download, FileSpreadsheet, Search, User, CheckSquare, Square, Shield, L
 import styles from '../dashboard.module.css';
 import { Tabs } from '@/components/ui/Tabs';
 import { supabase } from '@/lib/supabaseClient';
+import { getAuditActionPresentation } from '@/lib/auditActions';
 import JSZip from 'jszip';
 import { Modal } from '@/components/ui/Modal';
 
@@ -148,20 +149,13 @@ export default function AuditPage() {
                     ? `${t.users.first_name} ${t.users.last_name || ''}`.trim()
                     : 'Sistema / Scraper';
                 
-                let friendlyAction = 'Modificación';
-                if (t.action === 'CREATE') friendlyAction = 'Subida de Documento';
-                if (t.action === 'CLOSE') friendlyAction = 'Aprobación de PDF';
-                if (t.action === 'CLOSE_BALANZA') friendlyAction = 'Cierre por Balanza';
-                if (t.action === 'UPDATE') friendlyAction = 'Modificación de Hojas';
-                if (t.action === 'DELETE') friendlyAction = 'Eliminación de Reporte';
-                if (t.action === 'ERROR_MARKED') friendlyAction = 'Marcado como Error';
-                if (t.action === 'OBSERVED') friendlyAction = 'Marcado como Observado';
+                const presentation = getAuditActionPresentation(t.action);
 
                 return {
                     id: t.id,
                     user: userFull,
-                    action: friendlyAction,
-                    module: t.action === 'CREATE' ? 'Carga' : t.action === 'CLOSE' ? 'Firma' : 'Editor',
+                    action: presentation.label,
+                    module: presentation.module,
                     date: new Date(t.modification_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
                     ip: t.users?.email || 'N/A',
                     docId: t.document_id,
@@ -175,19 +169,12 @@ export default function AuditPage() {
                     ? `${t.users.first_name} ${t.users.last_name || ''}`.trim()
                     : 'Sistema / Scraper';
 
-                let friendlyAction = 'Modificación';
-                if (t.action === 'CREATE') friendlyAction = 'Registro de Reporte';
-                if (t.action === 'CLOSE') friendlyAction = 'Aprobación Final';
-                if (t.action === 'CLOSE_BALANZA') friendlyAction = 'Cierre por Balanza';
-                if (t.action === 'UPDATE') friendlyAction = 'Páginas Modificadas';
-                if (t.action === 'DELETE') friendlyAction = 'Eliminación';
-                if (t.action === 'ERROR_MARKED') friendlyAction = 'Marcado con Error';
-                if (t.action === 'OBSERVED') friendlyAction = 'Marcado como Observado';
+                const presentation = getAuditActionPresentation(t.action);
 
                 return {
                     id: String(t.document_id),
                     name: t.documents?.name || 'Reporte Eliminado',
-                    action: friendlyAction,
+                    action: presentation.label,
                     user: userFull,
                     date: new Date(t.modification_date).toLocaleString('es-PE', { timeZone: 'America/Lima' }),
                     status: t.documents?.status || 'ELIMINADO',
