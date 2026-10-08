@@ -121,30 +121,38 @@ export default function AuditPage() {
     const fetchAuditLogs = async () => {
         setLoading(true);
         try {
-            const { data, error } = await supabase
-                .from('audit_documents')
-                .select(`
-                    id,
-                    action,
-                    modification_date,
-                    document_id,
-                    documents (
-                        name,
-                        status,
-                        file_link
-                    ),
-                    users (
-                        first_name,
-                        last_name,
-                        email
-                    )
-                `)
-                .order('modification_date', { ascending: false });
+            const pageSize = 1000;
+            const auditRows: any[] = [];
+            for (let from = 0; ; from += pageSize) {
+                const { data, error } = await supabase
+                    .from('audit_documents')
+                    .select(`
+                        id,
+                        action,
+                        modification_date,
+                        document_id,
+                        documents (
+                            name,
+                            status,
+                            file_link
+                        ),
+                        users (
+                            first_name,
+                            last_name,
+                            email
+                        )
+                    `)
+                    .order('modification_date', { ascending: false })
+                    .range(from, from + pageSize - 1);
 
-            if (error) throw error;
+                if (error) throw error;
+                const page = data || [];
+                auditRows.push(...page);
+                if (page.length < pageSize) break;
+            }
 
             // Formatear para Trazabilidad de Usuarios
-            const formattedUsers = (data || []).map((t: any) => {
+            const formattedUsers = auditRows.map((t: any) => {
                 const userFull = t.users
                     ? `${t.users.first_name} ${t.users.last_name || ''}`.trim()
                     : 'Sistema / Scraper';
@@ -164,7 +172,7 @@ export default function AuditPage() {
             });
 
             // Formatear para Trazabilidad de Documentos
-            const formattedDocs = (data || []).map((t: any) => {
+            const formattedDocs = auditRows.map((t: any) => {
                 const userFull = t.users
                     ? `${t.users.first_name} ${t.users.last_name || ''}`.trim()
                     : 'Sistema / Scraper';
@@ -193,23 +201,32 @@ export default function AuditPage() {
 
     const fetchBulkDocs = async () => {
         try {
-            const { data, error } = await supabase
-                .from('documents')
-                .select(`
-                    id,
-                    name,
-                    status,
-                    creation_date,
-                    region,
-                    company,
-                    file_link,
-                    users:users!user_id (first_name, last_name)
-                `)
-                .order('id', { ascending: false });
+            // PostgREST limita la cantidad de filas por respuesta. Se recorren páginas
+            // para que filtros, selección y descarga ZIP contemplen todos los documentos.
+            const pageSize = 1000;
+            const docs: any[] = [];
+            for (let from = 0; ; from += pageSize) {
+                const { data, error } = await supabase
+                    .from('documents')
+                    .select(`
+                        id,
+                        name,
+                        status,
+                        creation_date,
+                        region,
+                        company,
+                        file_link,
+                        users:users!user_id (first_name, last_name)
+                    `)
+                    .order('id', { ascending: false })
+                    .range(from, from + pageSize - 1);
 
-            if (error) throw error;
+                if (error) throw error;
+                const page = data || [];
+                docs.push(...page);
+                if (page.length < pageSize) break;
+            }
 
-            const docs = data || [];
             const docIds = docs.map((d: any) => d.id);
 
             const auditMap: Record<number, {
@@ -221,30 +238,41 @@ export default function AuditPage() {
             }> = {};
 
             if (docIds.length > 0) {
-                const { data: auditData, error: auditError } = await supabase
-                    .from('audit_documents')
-                    .select('document_id, action, modification_date')
-                    .in('document_id', docIds)
-                    .order('modification_date', { ascending: false });
+                // Evita URLs excesivas en .in(...) y pagina también las trazas,
+                // porque un documento puede tener múltiples eventos de auditoría.
+                const idBatchSize = 100;
+                const auditPageSize = 1000;
+                for (let batchStart = 0; batchStart < docIds.length; batchStart += idBatchSize) {
+                    const idBatch = docIds.slice(batchStart, batchStart + idBatchSize);
+                    for (let from = 0; ; from += auditPageSize) {
+                        const { data: auditData, error: auditError } = await supabase
+                            .from('audit_documents')
+                            .select('document_id, action, modification_date')
+                            .in('document_id', idBatch)
+                            .order('modification_date', { ascending: false })
+                            .range(from, from + auditPageSize - 1);
 
-                if (!auditError && auditData) {
-                    for (const entry of auditData) {
-                        const docId = entry.document_id;
-                        if (!auditMap[docId]) {
-                            auditMap[docId] = {
-                                last_modification_date: entry.modification_date
-                            };
+                        if (auditError) throw auditError;
+                        const auditPage = auditData || [];
+                        for (const entry of auditPage) {
+                            const docId = entry.document_id;
+                            if (!auditMap[docId]) {
+                                auditMap[docId] = {
+                                    last_modification_date: entry.modification_date
+                                };
+                            }
+                            const current = auditMap[docId];
+                            if (entry.action === 'CLOSE_BALANZA' && !current.close_balanza_date) {
+                                current.close_balanza_date = entry.modification_date;
+                            } else if (entry.action === 'CLOSE' && !current.close_comercial_date) {
+                                current.close_comercial_date = entry.modification_date;
+                            } else if (entry.action === 'OBSERVED' && !current.observed_date) {
+                                current.observed_date = entry.modification_date;
+                            } else if (entry.action === 'ERROR_MARKED' && !current.error_date) {
+                                current.error_date = entry.modification_date;
+                            }
                         }
-                        const current = auditMap[docId];
-                        if (entry.action === 'CLOSE_BALANZA' && !current.close_balanza_date) {
-                            current.close_balanza_date = entry.modification_date;
-                        } else if (entry.action === 'CLOSE' && !current.close_comercial_date) {
-                            current.close_comercial_date = entry.modification_date;
-                        } else if (entry.action === 'OBSERVED' && !current.observed_date) {
-                            current.observed_date = entry.modification_date;
-                        } else if (entry.action === 'ERROR_MARKED' && !current.error_date) {
-                            current.error_date = entry.modification_date;
-                        }
+                        if (auditPage.length < auditPageSize) break;
                     }
                 }
             }
@@ -309,14 +337,23 @@ export default function AuditPage() {
 
             if (usersError) throw usersError;
 
-            const { data: docsData, error: docsError } = await supabase
-                .from('documents')
-                .select('id, user_id, encargado_cierre, status, company, region, name, creation_date');
+            const pageSize = 1000;
+            const docsData: any[] = [];
+            for (let from = 0; ; from += pageSize) {
+                const { data, error: docsError } = await supabase
+                    .from('documents')
+                    .select('id, user_id, encargado_cierre, status, company, region, name, creation_date')
+                    .order('id', { ascending: false })
+                    .range(from, from + pageSize - 1);
 
-            if (docsError) throw docsError;
+                if (docsError) throw docsError;
+                const page = data || [];
+                docsData.push(...page);
+                if (page.length < pageSize) break;
+            }
 
             setMetricsUsers(usersData || []);
-            setMetricsDocs(docsData || []);
+            setMetricsDocs(docsData);
         } catch (err) {
             console.error('Error fetching metrics data:', err);
         } finally {
@@ -1176,17 +1213,23 @@ export default function AuditPage() {
     const handleDownloadSelection = async () => {
         if (selectedDocs.length === 0) return;
         try {
-            const numericIds = selectedDocs.map(Number);
-            const { data, error } = await supabase
-                .from('documents')
-                .select('id, name, file_link, status')
-                .in('id', numericIds);
+            const numericIds = Array.from(new Set(selectedDocs.map(Number)));
+            const selectedDocuments: any[] = [];
+            const idBatchSize = 100;
+            for (let start = 0; start < numericIds.length; start += idBatchSize) {
+                const idBatch = numericIds.slice(start, start + idBatchSize);
+                const { data, error } = await supabase
+                    .from('documents')
+                    .select('id, name, file_link, status')
+                    .in('id', idBatch);
 
-            if (error) throw error;
-            if (!data || data.length === 0) return;
+                if (error) throw error;
+                selectedDocuments.push(...(data || []));
+            }
+            if (selectedDocuments.length === 0) return;
 
             let downloadedAny = false;
-            for (const doc of data) {
+            for (const doc of selectedDocuments) {
                 if (currentUserRole === 'EDITOR' && doc.status !== 'CERRADO' && doc.status !== 'CERRADO POR BALANZA') {
                     console.warn(`Descarga bloqueada para el reporte #${doc.id} por no estar en estado Cerrado por Balanza (rol Comercial).`);
                     continue;

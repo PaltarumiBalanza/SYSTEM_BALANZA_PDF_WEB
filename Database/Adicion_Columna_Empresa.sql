@@ -12,3 +12,7 @@ ADD COLUMN IF NOT EXISTS company VARCHAR(20) DEFAULT 'PSAC' CHECK (company IN ('
 UPDATE public.documents 
 SET company = 'PSAC' 
 WHERE company IS NULL;
+
+-- 3. Optimizar los conteos y filtros del dashboard por empresa y estado
+CREATE INDEX IF NOT EXISTS idx_documents_company_status
+ON public.documents (company, status);

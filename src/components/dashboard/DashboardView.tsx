@@ -27,6 +27,10 @@ export function DashboardView({ company }: DashboardViewProps) {
     const [sortColumn, setSortColumn] = useState<'name' | 'date' | 'status' | 'region' | 'lastModifiedBy' | null>(null);
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
+    // Contadores reales desde la BD (independientes del límite de filas de Supabase)
+    const [realCounts, setRealCounts] = useState({ pending: 0, closed: 0, success: 0, error: 0 });
+    const [countsError, setCountsError] = useState<string | null>(null);
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const params = new URLSearchParams(window.location.search);
@@ -129,6 +133,37 @@ export function DashboardView({ company }: DashboardViewProps) {
         }
     };
 
+    // Los conteos exactos no descargan filas y no están sujetos al límite de resultados de PostgREST.
+    const fetchCounts = async () => {
+        const statuses = [
+            { key: 'pending', values: ['PENDIENTE'] },
+            { key: 'closed', values: ['CERRADO', 'CERRADO POR BALANZA'] },
+            { key: 'success', values: ['HECHO'] },
+            { key: 'error', values: ['ERROR'] },
+        ] as const;
+
+        try {
+            const results = await Promise.all(statuses.map(async ({ key, values }) => {
+                const { count, error } = await supabase
+                    .from('documents')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('company', company)
+                    .in('status', [...values]);
+
+                if (error) throw error;
+                if (count === null) throw new Error(`Supabase no devolvió el contador para ${key}.`);
+                return [key, count] as const;
+            }));
+
+            setRealCounts(Object.fromEntries(results) as typeof realCounts);
+            setCountsError(null);
+        } catch (err) {
+            // Conserva los últimos valores correctos; nunca reemplaza un fallo por ceros engañosos.
+            console.error('Error al obtener contadores:', err);
+            setCountsError('No se pudieron actualizar los contadores. Se muestran los últimos valores disponibles.');
+        }
+    };
+
     const handleRename = async (id: string) => {
         if (!tempName.trim()) {
             alert('El nombre del archivo no puede estar vacío.');
@@ -200,6 +235,15 @@ export function DashboardView({ company }: DashboardViewProps) {
 
     useEffect(() => {
         fetchReports();
+        fetchCounts();
+
+        // Al volver al dashboard, actualiza cambios realizados por otros operadores.
+        const handleFocus = () => {
+            fetchReports();
+            fetchCounts();
+        };
+        window.addEventListener('focus', handleFocus);
+        return () => window.removeEventListener('focus', handleFocus);
     }, [company]);
 
     const handleDelete = async (id: string) => {
@@ -213,6 +257,7 @@ export function DashboardView({ company }: DashboardViewProps) {
 
             if (error) throw error;
             setReports(prev => prev.filter(r => r.id !== id));
+            await fetchCounts();
         } catch (err) {
             alert('Error al eliminar reporte: ' + (err as any).message);
         }
@@ -281,10 +326,7 @@ export function DashboardView({ company }: DashboardViewProps) {
         );
     };
 
-    const pendingCount = reports.filter(r => r.status === 'pending').length;
-    const closedCount = reports.filter(r => r.status === 'closed').length;
-    const successCount = reports.filter(r => r.status === 'success').length;
-    const errorCount = reports.filter(r => r.status === 'error').length;
+    const { pending: pendingCount, closed: closedCount, success: successCount, error: errorCount } = realCounts;
 
     const handleOpenTrace = (id: string) => {
         setSelectedId(id);
@@ -321,6 +363,12 @@ export function DashboardView({ company }: DashboardViewProps) {
                     <p className={styles.subtitle}>Gestión de autorizaciones de reportes PDF de balanzas para {company}.</p>
                 </div>
             </div>
+
+            {countsError && (
+                <div role="alert" style={{ marginBottom: '1rem', color: 'var(--status-error)', fontSize: '0.85rem' }}>
+                    {countsError}
+                </div>
+            )}
 
             <div className={styles.statsGrid}>
                 <div className={styles.statCard}>
