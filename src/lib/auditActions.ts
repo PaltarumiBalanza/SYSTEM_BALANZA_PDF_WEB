@@ -20,6 +20,24 @@ const ACTION_PRESENTATIONS: Record<string, AuditActionPresentation> = {
         module: 'Editor',
         severity: 'info'
     },
+    PAGE_ADDED: {
+        label: 'Páginas agregadas al reporte',
+        description: 'agregó páginas o anexos al reporte',
+        module: 'Editor',
+        severity: 'info'
+    },
+    PAGE_DELETED: {
+        label: 'Páginas eliminadas del reporte',
+        description: 'eliminó páginas del reporte',
+        module: 'Editor',
+        severity: 'warning'
+    },
+    PAGES_REORDERED: {
+        label: 'Páginas reordenadas',
+        description: 'cambió el orden de las páginas del reporte',
+        module: 'Editor',
+        severity: 'info'
+    },
     CLOSE_BALANZA: {
         label: 'Cerrado por Balanza',
         description: 'cerró y firmó el reporte por Balanza',

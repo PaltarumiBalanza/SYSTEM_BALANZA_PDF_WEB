@@ -14,8 +14,16 @@ interface PageItem {
     pageIndex: number;   // 1-based page number inside the source PDF
     source: string;      // 'original' | filename of attached pdf
     pdfDoc: any;         // Instancia del documento PDF de pdfjs
-    bucket: string;       // Storage bucket ('raw-reports' o 'annex-attachments')
-    path: string;         // File path inside the bucket
+    bucket: string;      // Storage bucket ('raw-reports' o 'annex-attachments')
+    path: string;        // File path inside the bucket
+    sha256?: string;     // Huella del archivo para impedir anexos duplicados
+}
+
+interface PageOperation {
+    bucket: string;
+    path: string;
+    pageIndex: number;
+    sha256?: string;
 }
 
 export default function EditorPage() {
@@ -78,7 +86,7 @@ export default function EditorPage() {
 
     const [loadingPdf, setLoadingPdf] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [docMetadata, setDocMetadata] = useState<{ name: string; status: string; creatorName: string; fileLink: string } | null>(null);
+    const [docMetadata, setDocMetadata] = useState<{ name: string; status: string; creatorName: string; fileLink: string; draftOperations: PageOperation[] } | null>(null);
     
     // Novedades de visualización, zoom, roles y lector hoja por hoja
     const [layoutMode, setLayoutMode] = useState<'grid' | 'list' | 'reader'>('grid');
@@ -116,6 +124,42 @@ export default function EditorPage() {
             .replace(/[\u0300-\u036f]/g, "") // Remueve acentos
             .replace(/[ñÑ]/g, "n")
             .replace(/[^a-zA-Z0-9.\s-]/g, "_"); // Mantiene espacios y caracteres alfanuméricos válidos
+    };
+
+    const calculateSha256 = async (buffer: ArrayBuffer): Promise<string> => {
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        return Array.from(new Uint8Array(digest))
+            .map(byte => byte.toString(16).padStart(2, '0'))
+            .join('');
+    };
+
+    const summarizePageChanges = (before: PageOperation[], after: PageOperation[]) => {
+        const key = (op: PageOperation) => `${op.bucket}|${op.path}|${op.pageIndex}|${op.sha256 || ''}`;
+        const beforeCounts = new Map<string, number>();
+        const afterCounts = new Map<string, number>();
+        before.forEach(op => beforeCounts.set(key(op), (beforeCounts.get(key(op)) || 0) + 1));
+        after.forEach(op => afterCounts.set(key(op), (afterCounts.get(key(op)) || 0) + 1));
+
+        const added = after.filter(op => {
+            const opKey = key(op);
+            const available = beforeCounts.get(opKey) || 0;
+            if (available > 0) {
+                beforeCounts.set(opKey, available - 1);
+                return false;
+            }
+            return true;
+        });
+        const removed = before.filter(op => {
+            const opKey = key(op);
+            const available = afterCounts.get(opKey) || 0;
+            if (available > 0) {
+                afterCounts.set(opKey, available - 1);
+                return false;
+            }
+            return true;
+        });
+
+        return { added, removed, reordered: added.length === 0 && removed.length === 0 && JSON.stringify(before) !== JSON.stringify(after) };
     };
 
     useEffect(() => {
@@ -162,7 +206,8 @@ export default function EditorPage() {
                     name: docData.name,
                     status: docData.status,
                     creatorName,
-                    fileLink: docData.file_link
+                    fileLink: docData.file_link,
+                    draftOperations: Array.isArray(docData.draft_operations) ? docData.draft_operations : []
                 });
 
                 const isFinalState = docData.status === 'HECHO' || docData.status === 'CERRADO POR BALANZA';
@@ -275,7 +320,8 @@ export default function EditorPage() {
                             source,
                             pdfDoc: resolved?.pdfDoc || null,
                             bucket: resolvedBucket,
-                            path: resolvedPath
+                            path: resolvedPath,
+                            sha256: op.sha256
                         };
                     });
                 } else {
@@ -374,6 +420,11 @@ export default function EditorPage() {
 
         try {
             const buffer = await file.arrayBuffer();
+            const sha256 = await calculateSha256(buffer);
+            const duplicate = pages.find(page => page.sha256 === sha256);
+            if (duplicate) {
+                throw new Error(`El archivo ya fue adjuntado (${duplicate.source}). No se agregó nuevamente.`);
+            }
             
             const pdfjsLib = await import('pdfjs-dist');
             pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
@@ -400,7 +451,8 @@ export default function EditorPage() {
                     source: baseName, // Conservamos el nombre original legible para la interfaz
                     pdfDoc: pdf,
                     bucket: 'annex-attachments',
-                    path: uploadData.path
+                    path: uploadData.path,
+                    sha256
                 }));
                 return [...prev, ...newPages];
             });
@@ -487,7 +539,8 @@ export default function EditorPage() {
             return {
                 bucket,
                 path: cleanPath,
-                pageIndex: p.pageIndex
+                pageIndex: p.pageIndex,
+                ...(p.sha256 ? { sha256: p.sha256 } : {})
             };
         });
     };
@@ -513,22 +566,26 @@ export default function EditorPage() {
                 return;
             }
 
-            // Si el reporte ya fue cerrado por balanza, actualizar directamente su estado a HECHO
+            // La aprobación comercial se valida y ejecuta en backend; no recompila ni altera páginas.
             if (docMetadata?.status === 'CERRADO POR BALANZA') {
-                const { error } = await supabase
-                    .from('documents')
-                    .update({ status: 'HECHO' })
-                    .eq('id', Number(reportId));
-
-                if (error) throw error;
-
-                await supabase.from('audit_documents').insert({
-                    document_id: Number(reportId),
-                    user_id: user.id,
-                    action: 'CLOSE'
+                const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
+                    body: {
+                        documentId: Number(reportId),
+                        mode: 'APPROVE'
+                    }
                 });
 
-                triggerAlertModal('Reporte Completado', 'El reporte ha sido procesado, compilado y marcado como COMPLETADO exitosamente.', 'success', true);
+                if (error) {
+                    let errorMsg = error.message;
+                    try {
+                        const responseBody = await error.context.json();
+                        if (responseBody?.error) errorMsg = responseBody.error;
+                    } catch (e) {}
+                    throw new Error(errorMsg);
+                }
+                if (data?.error) throw new Error(data.error);
+
+                triggerAlertModal('Reporte Completado', 'El reporte ha sido aprobado por Comercial exitosamente.', 'success', true);
                 return;
             }
 
@@ -538,9 +595,11 @@ export default function EditorPage() {
             const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
                 body: {
                     documentId: Number(reportId),
-                    supervisorId: user.id,
                     operations,
-                    sign: signed
+                    sign: signed,
+                    mode: 'FINALIZE',
+                    targetStatus: 'HECHO',
+                    auditDetails: summarizePageChanges(docMetadata?.draftOperations || [], operations)
                 }
             });
 
@@ -592,10 +651,11 @@ export default function EditorPage() {
             const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
                 body: {
                     documentId: Number(reportId),
-                    supervisorId: user.id,
                     operations,
                     sign: signed,
-                    targetStatus: 'CERRADO POR BALANZA'
+                    mode: 'FINALIZE',
+                    targetStatus: 'CERRADO POR BALANZA',
+                    auditDetails: summarizePageChanges(docMetadata?.draftOperations || [], operations)
                 }
             });
 
@@ -652,6 +712,8 @@ export default function EditorPage() {
 
             const operations = buildCompileOperations();
 
+            const previousOperations = docMetadata?.draftOperations || [];
+            const changes = summarizePageChanges(previousOperations, operations);
             const { error } = await supabase
                 .from('documents')
                 .update({
@@ -661,11 +723,43 @@ export default function EditorPage() {
 
             if (error) throw error;
 
-            await supabase.from('audit_documents').insert({
+            const auditRows: Array<{
+                document_id: number;
+                user_id: string;
+                action: string;
+                details: Record<string, unknown>;
+            }> = [{
                 document_id: Number(reportId),
                 user_id: user.id,
-                action: 'UPDATE'
-            });
+                action: 'UPDATE',
+                details: {
+                    before: previousOperations,
+                    after: operations,
+                    ...changes
+                }
+            }];
+            if (changes.added.length > 0) {
+                auditRows.push({
+                    document_id: Number(reportId), user_id: user.id, action: 'PAGE_ADDED',
+                    details: { pages: changes.added, count: changes.added.length }
+                });
+            }
+            if (changes.removed.length > 0) {
+                auditRows.push({
+                    document_id: Number(reportId), user_id: user.id, action: 'PAGE_DELETED',
+                    details: { pages: changes.removed, count: changes.removed.length }
+                });
+            }
+            if (changes.reordered) {
+                auditRows.push({
+                    document_id: Number(reportId), user_id: user.id, action: 'PAGES_REORDERED',
+                    details: { before: previousOperations, after: operations }
+                });
+            }
+            const { error: auditError } = await supabase.from('audit_documents').insert(auditRows);
+            if (auditError) throw auditError;
+
+            setDocMetadata(prev => prev ? { ...prev, draftOperations: operations } : prev);
 
             triggerAlertModal('Borrador Guardado', 'La ordenación y anexos actuales han sido guardados como borrador de trabajo exitosamente.', 'info', false);
         } catch (err: any) {
@@ -874,10 +968,9 @@ export default function EditorPage() {
                 const { data, error } = await supabase.functions.invoke('compile-and-sign-pdf', {
                     body: {
                         documentId: Number(reportId),
-                        supervisorId: user?.id,
                         operations,
                         sign: signed,
-                        targetStatus: docMetadata.status || 'PENDIENTE'
+                        mode: 'PREVIEW'
                     }
                 });
 
